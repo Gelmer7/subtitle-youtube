@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>legrendas</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <h1>legrendas</h1>
+          <p class="tagline">Inglês em cima, tradução em baixo. Fora do vídeo.</p>
+        </div>
+        <label class="switch" title="Ativar ou desativar">
+          <input id="enabled" type="checkbox" aria-label="Ativar ou desativar as legendas" />
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+        </label>
+      </header>
+
+      <section class="preview" aria-hidden="true">
+        <span class="preview-original">This is the English line.</span>
+        <span class="preview-translation">Esta é a linha em português.</span>
+      </section>
+
+      <section class="fields">
+        <label class="field">
+          <span class="label">Tradução</span>
+          <select id="targetLang">
+            <option value="pt-BR">Português (Brasil)</option>
+            <option value="es">Español</option>
+          </select>
+        </label>
+
+        <label class="check">
+          <input id="showTranslation" type="checkbox" />
+          <span>Mostrar a linha traduzida</span>
+        </label>
+
+        <label class="field">
+          <span class="label">
+            Tamanho da letra
+            <output id="fontSizeOut">20 px</output>
+          </span>
+          <input id="fontSize" type="range" min="16" max="28" step="1" />
+        </label>
+
+        <label class="field">
+          <span class="label">Em fullscreen</span>
+          <select id="fullscreen">
+            <option value="shrink">Encolher o vídeo e mostrar</option>
+            <option value="hide">Esconder as legendas</option>
+          </select>
+        </label>
+      </section>
+
+      <p class="hint">
+        Abre um vídeo com legendas (CC). A extensão liga o CC sozinha e esconde
+        as legendas nativas.
+      </p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,47 @@
+/* Page-level rules. The dock itself is styled inside its shadow root. */
+
+html.legrendas-active .ytp-caption-window-container,
+html.legrendas-active .caption-window {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#legrendas-host {
+  all: initial;
+  display: block;
+  flex: none;
+  width: 100%;
+  margin: 0 auto 12px;
+}
+
+#legrendas-host.legrendas-fs-host {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: var(--legrendas-fs-h, 96px);
+  margin: 0 !important;
+  z-index: 60 !important;
+}
+
+/* Fullscreen: the video is reduced by the height of the subtitle strip, so the
+   strip sits in the black area below the picture instead of covering it. */
+#movie_player.legrendas-fs .html5-video-container {
+  height: calc(100% - var(--legrendas-fs-h, 96px)) !important;
+  top: 0 !important;
+}
+
+#movie_player.legrendas-fs video {
+  height: 100% !important;
+  top: 0 !important;
+  object-fit: contain !important;
+}
+
+#movie_player.legrendas-fs .ytp-chrome-bottom {
+  bottom: var(--legrendas-fs-h, 96px) !important;
+}
+
+#movie_player.legrendas-fs .ytp-gradient-bottom {
+  height: calc(var(--legrendas-fs-h, 96px) + 100px) !important;
+}

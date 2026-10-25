@@ -1,0 +1,29 @@
+# Dependências / build
+node_modules/
+dist/
+build/
+*.zip
+*.crx
+*.pem
+*.key
+
+# Logs e sistema
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.code-workspace
+
+# Testes
+test-results/
+playwright-report/
+coverage/
+
+# Ambiente
+.env
+.env.*
+*.local
