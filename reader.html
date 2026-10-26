@@ -63,10 +63,10 @@
         </div>
 
         <div class="control-group navigation">
-          <button id="prevLineButton" class="small-button" type="button" aria-label="Linha anterior" title="Linha anterior">
+          <button id="prevLineButton" class="small-button" type="button" aria-label="Linha anterior (seta acima)" title="Linha anterior (↑)">
             Linha −
           </button>
-          <button id="nextLineButton" class="small-button" type="button" aria-label="Linha seguinte" title="Linha seguinte">
+          <button id="nextLineButton" class="small-button" type="button" aria-label="Linha seguinte (seta abaixo)" title="Linha seguinte (↓)">
             Linha +
           </button>
           <label class="select-wrap">
@@ -95,6 +95,10 @@
           <label class="toggle">
             <input id="followAudio" type="checkbox" checked />
             <span>Seguir áudio</span>
+          </label>
+          <label class="toggle" title="Ao chegar ao fim da linha, volta ao início até saltares com ↑/↓">
+            <input id="loopLine" type="checkbox" />
+            <span>Repetir linha</span>
           </label>
         </div>
       </footer>

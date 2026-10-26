@@ -6,7 +6,10 @@ const SETTINGS_DEFAULTS = {
   fontSize: 20,
   pauseOnLookup: false,
   followAudio: true,
+  loopLine: false,
 };
+
+const READER_PREFS_VERSION = 2;
 
 const els = {
   connection: document.getElementById('connection'),
@@ -29,6 +32,7 @@ const els = {
   showTranslation: document.getElementById('showTranslation'),
   pauseOnLookup: document.getElementById('pauseOnLookup'),
   followAudio: document.getElementById('followAudio'),
+  loopLine: document.getElementById('loopLine'),
   fullscreenButton: document.getElementById('fullscreenButton'),
   closeButton: document.getElementById('closeButton'),
   wordPopover: document.getElementById('wordPopover'),
@@ -44,6 +48,7 @@ const state = {
   tabId: 0,
   settings: { ...SETTINGS_DEFAULTS },
   follow: true,
+  followSuspended: false,
   lines: [],
   revision: -1,
   fullLoading: false,
@@ -62,15 +67,25 @@ const state = {
   rafId: 0,
   programmaticScrollUntil: 0,
   translationCache: new Map(),
+  openLineTranslations: new Set(),
+  lineTranslationRequests: new Set(),
   lookupSession: null,
+  hover: {
+    timer: 0,
+    closeTimer: 0,
+    wordEl: null,
+  },
   popover: {
     open: false,
+    pinned: false,
     requestId: 0,
     anchor: null,
     key: '',
     lineIndex: -1,
     lineStart: 0,
   },
+  loopBusy: false,
+  loopHoldUntil: 0,
   toastTimer: 0,
   destroyed: false,
   videoId: null,
@@ -125,6 +140,22 @@ function getSync(defaults) {
   });
 }
 
+function getAllSync() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.sync.get(null, (stored) => {
+        if (chrome.runtime.lastError) {
+          resolve({});
+          return;
+        }
+        resolve(stored || {});
+      });
+    } catch {
+      resolve({});
+    }
+  });
+}
+
 function setSync(values) {
   try {
     chrome.storage.sync.set(values, () => {
@@ -140,6 +171,7 @@ function normalizeSettings() {
   state.settings.showTranslation = state.settings.showTranslation !== false;
   state.settings.pauseOnLookup = state.settings.pauseOnLookup === true;
   state.settings.followAudio = state.settings.followAudio !== false;
+  state.settings.loopLine = state.settings.loopLine === true;
   state.settings.fontSize = Math.min(
     28,
     Math.max(16, Number(state.settings.fontSize) || 20)
@@ -148,10 +180,27 @@ function normalizeSettings() {
 }
 
 async function loadSettings() {
-  const stored = await getSync(SETTINGS_DEFAULTS);
+  const [stored, raw] = await Promise.all([
+    getSync(SETTINGS_DEFAULTS),
+    getAllSync(),
+  ]);
   state.settings = { ...SETTINGS_DEFAULTS, ...stored };
+
+  const legacy =
+    raw.readerPrefsVersion == null ||
+    Number(raw.readerPrefsVersion) < READER_PREFS_VERSION;
+  if (legacy) state.settings.followAudio = true;
+
   normalizeSettings();
   applySettingsToUi();
+
+  if (legacy) {
+    setSync({
+      readerPrefsVersion: READER_PREFS_VERSION,
+      followAudio: state.settings.followAudio,
+      loopLine: state.settings.loopLine,
+    });
+  }
 }
 
 function applySettingsToUi() {
@@ -160,6 +209,7 @@ function applySettingsToUi() {
   els.showTranslation.checked = state.settings.showTranslation;
   els.pauseOnLookup.checked = state.settings.pauseOnLookup;
   els.followAudio.checked = state.follow;
+  els.loopLine.checked = state.settings.loopLine;
   els.transcript.classList.toggle(
     'hide-translation',
     !state.settings.showTranslation
@@ -206,6 +256,38 @@ function formatTime(value) {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
+function lineKey(line) {
+  return `${line.start}|${line.id != null ? line.id : line.text}`;
+}
+
+function lineSpeechEnd(line) {
+  const words = Array.isArray(line.words) ? line.words : [];
+  const lastWord = words.length ? words[words.length - 1] : null;
+  const end =
+    lastWord && Number.isFinite(lastWord.end)
+      ? lastWord.end
+      : Number(line.end);
+  const fallback = Number(line.start) + 0.25;
+  return Math.max(Number(line.start) + 0.2, Number.isFinite(end) ? end : fallback);
+}
+
+function cachedLineTranslation(line) {
+  if (line.translation) return line.translation;
+  const key = translateCacheKey(state.settings.targetLang, line.text);
+  return state.translationCache.get(key) || '';
+}
+
+function clearFollowSuspension() {
+  state.followSuspended = false;
+  els.followAudio.title = 'Seguir áudio';
+}
+
+function suspendFollowForScroll() {
+  if (!state.follow || state.followSuspended) return;
+  state.followSuspended = true;
+  els.followAudio.title = 'Seguir áudio: retoma na próxima linha';
+}
+
 function isReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
@@ -213,6 +295,13 @@ function isReducedMotion() {
 function isFormTarget(target) {
   if (!(target instanceof Element)) return false;
   return !!target.closest('input, select, textarea, button, [contenteditable="true"]');
+}
+
+function blocksLineArrow(target) {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest(
+    'select, textarea, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"])'
+  );
 }
 
 function isCurrentlyPlaying() {
@@ -366,6 +455,7 @@ function updateControls(data) {
   els.showTranslation.checked = state.settings.showTranslation;
   els.pauseOnLookup.checked = state.settings.pauseOnLookup;
   els.followAudio.checked = state.follow;
+  els.loopLine.checked = state.settings.loopLine;
 }
 
 function updateEmptyState(data) {
@@ -428,9 +518,14 @@ function renderTranscript() {
   const fragment = document.createDocumentFragment();
 
   state.lines.forEach((line, lineIndex) => {
+    const key = lineKey(line);
+    const translationText = cachedLineTranslation(line);
+    const translationOpen = state.openLineTranslations.has(key);
+
     const lineEl = document.createElement('article');
     lineEl.className = 'line';
     lineEl.dataset.lineIndex = String(lineIndex);
+    lineEl.classList.toggle('is-translation-open', translationOpen);
 
     const timeButton = document.createElement('button');
     timeButton.type = 'button';
@@ -463,14 +558,32 @@ function renderTranscript() {
 
     body.append(textEl);
 
-    if (line.translation) {
-      const translationEl = document.createElement('p');
+    if (translationText || translationOpen) {
+      const translationEl = document.createElement('div');
       translationEl.className = 'line-translation';
-      translationEl.textContent = line.translation;
+      translationEl.classList.toggle('is-pending', !translationText);
+      translationEl.textContent = translationText || 'A traduzir…';
       body.append(translationEl);
     }
 
-    lineEl.append(timeButton, body);
+    const tools = document.createElement('div');
+    tools.className = 'line-tools';
+
+    const translateButton = document.createElement('button');
+    translateButton.type = 'button';
+    translateButton.className = 'line-translate';
+    translateButton.dataset.lineIndex = String(lineIndex);
+    translateButton.title = 'Traduzir linha inteira';
+    translateButton.setAttribute('aria-label', 'Traduzir linha inteira');
+    translateButton.setAttribute('aria-expanded', String(translationOpen));
+    translateButton.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<path d="M4 5h10M9 3v2c0 4.6-2.3 8-6 10M5.5 9.5c1.8 3.2 4.5 5.6 8.1 7.2M14 20l4.2-10L22 20M15.7 16.5h5.1" ' +
+      'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</svg>';
+    tools.append(translateButton);
+
+    lineEl.append(timeButton, body, tools);
     fragment.append(lineEl);
     state.lineEls[lineIndex] = lineEl;
     state.wordEls[lineIndex] = wordEls;
@@ -483,6 +596,15 @@ function renderTranscript() {
   );
   els.transcript.hidden = state.lines.length === 0;
   els.emptyState.hidden = state.lines.length > 0;
+
+  state.lines.forEach((line, lineIndex) => {
+    if (
+      state.openLineTranslations.has(lineKey(line)) &&
+      !cachedLineTranslation(line)
+    ) {
+      ensureLineTranslation(lineIndex);
+    }
+  });
 }
 
 function lineIndexForTime(time) {
@@ -540,6 +662,8 @@ function setActive(lineIndex, wordIndex) {
   const oldLine = state.activeLine;
 
   if (lineChanged) {
+    clearFollowSuspension();
+
     if (oldLine >= 0 && state.lineEls[oldLine]) {
       state.lineEls[oldLine].classList.remove('is-active');
       if (state.activeWord >= 0 && state.wordEls[oldLine]) {
@@ -575,6 +699,23 @@ function updatePlaybackUi(force = false) {
   if (!state.lines.length) return;
 
   const time = getEstimatedTime();
+
+  if (
+    state.settings.loopLine &&
+    state.base &&
+    !state.base.paused &&
+    !state.base.ad &&
+    !state.base.ended &&
+    state.activeLine >= 0 &&
+    performance.now() >= state.loopHoldUntil
+  ) {
+    const activeLine = state.lines[state.activeLine];
+    if (activeLine && time >= lineSpeechEnd(activeLine) - 0.03) {
+      restartLoopLine(state.activeLine);
+      return;
+    }
+  }
+
   const lineIndex = lineIndexForTime(time);
   let wordIndex = -1;
 
@@ -586,8 +727,30 @@ function updatePlaybackUi(force = false) {
   setActive(lineIndex, wordIndex);
 }
 
+function restartLoopLine(index) {
+  if (state.loopBusy || !state.base) return;
+  const line = state.lines[index];
+  if (!line) return;
+
+  state.loopBusy = true;
+  state.loopHoldUntil = performance.now() + 1200;
+  state.base.time = Math.max(0, Number(line.start) || 0);
+  state.base.at = performance.now();
+  state.lastDisplayedSecond = -1;
+  updateTimeDisplay(true);
+
+  const release = () => {
+    state.loopBusy = false;
+  };
+
+  runCommand('seek', line.start, { silent: true }).then(release, release);
+  setTimeout(() => {
+    if (state.loopBusy) state.loopBusy = false;
+  }, 2600);
+}
+
 function scrollToActive(force = false) {
-  if (!state.follow || state.popover.open) return;
+  if (!state.follow || state.followSuspended || state.popover.open) return;
   if (state.activeLine < 0) return;
 
   const lineEl = state.lineEls[state.activeLine];
@@ -637,6 +800,10 @@ function applyPlayback(data) {
     state.lines = [];
     state.revision = -1;
     state.pendingFull = null;
+    state.openLineTranslations.clear();
+    state.lineTranslationRequests.clear();
+    state.loopBusy = false;
+    state.loopHoldUntil = performance.now() + 400;
     state.videoId = data.videoId;
     renderTranscript();
   } else if (data.videoId) {
@@ -846,7 +1013,9 @@ async function controlPlayback(play) {
 
   await runCommand(play ? 'play' : 'pause');
 
-  if (play && state.follow && !state.popover.open) scrollToActive(true);
+  if (play && state.follow && !state.followSuspended && !state.popover.open) {
+    scrollToActive(true);
+  }
 }
 
 async function seekBy(delta) {
@@ -857,6 +1026,7 @@ async function seekBy(delta) {
     state.base.duration > 0 ? state.base.duration : target
   );
   state.base.at = performance.now();
+  state.loopHoldUntil = performance.now() + 900;
   updatePlaybackUi(true);
   await runCommand('seek-by', delta, { silent: true });
 }
@@ -865,25 +1035,38 @@ async function seekTo(seconds) {
   if (!state.base) return;
   state.base.time = Math.max(0, Number(seconds) || 0);
   state.base.at = performance.now();
+  state.loopHoldUntil = performance.now() + 900;
   updatePlaybackUi(true);
   await runCommand('seek', state.base.time, { silent: true });
 }
 
-function jumpLine(direction) {
+async function jumpLine(direction) {
   if (!state.lines.length) return;
+
   const time = getEstimatedTime();
-  let index = lineIndexForTime(time);
+  let index = state.activeLine >= 0 ? state.activeLine : lineIndexForTime(time);
 
   if (index < 0) {
     index = direction > 0 ? 0 : state.lines.length - 1;
-  } else if (direction < 0) {
-    if (time - state.lines[index].start < 1.2) index -= 1;
   } else {
-    index += 1;
+    index += direction;
   }
 
   index = Math.min(state.lines.length - 1, Math.max(0, index));
-  seekTo(state.lines[index].start);
+  clearFollowSuspension();
+  state.loopHoldUntil = performance.now() + 1000;
+
+  const target = state.lines[index];
+  await seekTo(target.start);
+
+  if (
+    state.settings.loopLine &&
+    state.light &&
+    state.light.paused &&
+    !state.light.ended
+  ) {
+    await controlPlayback(true);
+  }
 }
 
 function maybePauseForLookup() {
@@ -918,15 +1101,55 @@ function resumeAfterLookup() {
   });
 }
 
+function cancelHoverTimers() {
+  clearTimeout(state.hover.timer);
+  clearTimeout(state.hover.closeTimer);
+  state.hover.timer = 0;
+  state.hover.closeTimer = 0;
+  state.hover.wordEl = null;
+}
+
+function scheduleHoverClose() {
+  if (state.popover.open && state.popover.pinned) return;
+
+  clearTimeout(state.hover.timer);
+  state.hover.timer = 0;
+  clearTimeout(state.hover.closeTimer);
+  state.hover.closeTimer = setTimeout(() => {
+    state.hover.closeTimer = 0;
+    if (state.popover.open && !state.popover.pinned) {
+      closePopover();
+    }
+  }, 170);
+}
+
+function scheduleHoverOpen(wordEl) {
+  const lineIndex = Number(wordEl.dataset.lineIndex);
+  const wordIndex = Number(wordEl.dataset.wordIndex);
+  if (!Number.isInteger(lineIndex) || !Number.isInteger(wordIndex)) return;
+
+  cancelHoverTimers();
+  state.hover.wordEl = wordEl;
+  state.hover.timer = setTimeout(() => {
+    state.hover.timer = 0;
+    if (!wordEl.isConnected) return;
+    openWord(lineIndex, wordIndex, wordEl, { source: 'hover' });
+  }, 240);
+}
+
 function hidePopoverVisual() {
+  cancelHoverTimers();
   state.popover.open = false;
+  state.popover.pinned = false;
   state.popover.anchor = null;
   state.popover.key = '';
   state.popover.requestId += 1;
   els.wordPopover.hidden = true;
+  els.wordPopover.classList.remove('is-hover');
 }
 
 function closePopover(options = {}) {
+  cancelHoverTimers();
   if (!state.popover.open) return;
   hidePopoverVisual();
 
@@ -980,31 +1203,49 @@ function trimTranslationCache() {
   }
 }
 
-async function openWord(lineIndex, wordIndex, wordEl) {
+async function openWord(lineIndex, wordIndex, wordEl, options = {}) {
   const line = state.lines[lineIndex];
   const word = line && line.words && line.words[wordIndex];
   if (!line || !word || !word.query) return;
 
-  if (state.popover.open) hidePopoverVisual();
+  const pinned = options.source !== 'hover';
+  const target = state.settings.targetLang;
+  const key = translateCacheKey(target, word.query);
+
+  if (state.popover.open) {
+    if (state.popover.pinned && !pinned) return;
+
+    if (state.popover.anchor === wordEl && state.popover.key === key) {
+      if (pinned && !state.popover.pinned) {
+        state.popover.pinned = true;
+        els.wordPopover.classList.remove('is-hover');
+        maybePauseForLookup();
+        requestAnimationFrame(() => positionPopover(wordEl));
+      }
+      return;
+    }
+
+    hidePopoverVisual();
+  }
 
   state.popover.open = true;
+  state.popover.pinned = pinned;
   state.popover.anchor = wordEl;
   state.popover.lineIndex = lineIndex;
   state.popover.lineStart = line.start;
-  state.popover.key = `${state.settings.targetLang}\u0000${word.query}`;
+  state.popover.key = key;
   const requestId = ++state.popover.requestId;
 
   els.popWord.textContent = word.text;
   els.popContext.textContent = line.text;
   els.popTranslation.classList.remove('is-error');
   els.popTranslation.textContent = 'A traduzir…';
+  els.wordPopover.classList.toggle('is-hover', !pinned);
   els.wordPopover.hidden = false;
   positionPopover(wordEl);
 
-  maybePauseForLookup();
+  if (pinned) maybePauseForLookup();
 
-  const target = state.settings.targetLang;
-  const key = translateCacheKey(target, word.query);
   const cached = state.translationCache.get(key);
 
   if (cached) {
@@ -1022,7 +1263,7 @@ async function openWord(lineIndex, wordIndex, wordEl) {
   if (
     !state.popover.open ||
     requestId !== state.popover.requestId ||
-    state.popover.key !== `${target}\u0000${word.query}`
+    state.popover.key !== key
   ) {
     return;
   }
@@ -1050,14 +1291,119 @@ async function repeatLine() {
   const start = state.popover.lineStart;
   closePopover({ resume: false });
   state.lookupSession = null;
+  state.loopHoldUntil = performance.now() + 1200;
   await runCommand('seek', start, { silent: true });
   await runCommand('play');
+}
+
+function updateLineTranslationDom(lineIndex) {
+  const line = state.lines[lineIndex];
+  const lineEl = state.lineEls[lineIndex];
+  if (!line || !lineEl) return;
+
+  const key = lineKey(line);
+  const open = state.openLineTranslations.has(key);
+  const text = cachedLineTranslation(line);
+  const button = lineEl.querySelector('.line-translate');
+  lineEl.classList.toggle('is-translation-open', open);
+  if (button) button.setAttribute('aria-expanded', String(open));
+
+  let panel = lineEl.querySelector('.line-translation');
+  if (!open && !text) {
+    if (panel) panel.remove();
+    return;
+  }
+
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'line-translation';
+    const body = lineEl.querySelector('.line-body');
+    if (!body) return;
+    body.append(panel);
+  }
+
+  panel.classList.toggle('is-pending', !text);
+  panel.classList.remove('is-error');
+  panel.textContent = text || 'A traduzir…';
+}
+
+async function ensureLineTranslation(lineIndex) {
+  const line = state.lines[lineIndex];
+  if (!line) return;
+
+  const key = lineKey(line);
+  const cached = cachedLineTranslation(line);
+  if (cached) {
+    if (!line.translation) line.translation = cached;
+    updateLineTranslationDom(lineIndex);
+    return;
+  }
+
+  const target = state.settings.targetLang;
+  const requestKey = `${target}\u0000${key}`;
+  if (state.lineTranslationRequests.has(requestKey)) return;
+  state.lineTranslationRequests.add(requestKey);
+
+  let result = null;
+
+  try {
+    result = await sendBackground(
+      'translate',
+      { texts: [line.text], target },
+      8000
+    );
+  } finally {
+    state.lineTranslationRequests.delete(requestKey);
+  }
+
+  if (state.settings.targetLang !== target) return;
+
+  const currentIndex = state.lines.findIndex((item) => lineKey(item) === key);
+  if (currentIndex < 0) return;
+  if (!state.openLineTranslations.has(key)) return;
+
+  const translation =
+    result &&
+    Array.isArray(result.translations) &&
+    result.translations.length
+      ? String(result.translations[0] || '').trim()
+      : '';
+
+  if (!translation) {
+    const panel = state.lineEls[currentIndex]?.querySelector('.line-translation');
+    if (panel) {
+      panel.classList.remove('is-pending');
+      panel.classList.add('is-error');
+      panel.textContent = 'Não foi possível traduzir esta linha.';
+    }
+    return;
+  }
+
+  state.lines[currentIndex].translation = translation;
+  state.translationCache.set(translateCacheKey(target, line.text), translation);
+  trimTranslationCache();
+  updateLineTranslationDom(currentIndex);
+}
+
+function toggleLineTranslation(lineIndex) {
+  const line = state.lines[lineIndex];
+  if (!line) return;
+
+  const key = lineKey(line);
+  const open = !state.openLineTranslations.has(key);
+
+  if (open) state.openLineTranslations.add(key);
+  else state.openLineTranslations.delete(key);
+
+  updateLineTranslationDom(lineIndex);
+  if (open) ensureLineTranslation(lineIndex);
 }
 
 function updateCheckboxSettings() {
   els.showTranslation.checked = state.settings.showTranslation;
   els.pauseOnLookup.checked = state.settings.pauseOnLookup;
   els.followAudio.checked = state.follow;
+  els.loopLine.checked = state.settings.loopLine;
 }
 
 function persist(key, value) {
@@ -1070,6 +1416,14 @@ function onTranscriptClick(event) {
 
   const target = event.target;
   if (!(target instanceof Element)) return;
+
+  const lineTranslate = target.closest('.line-translate');
+  if (lineTranslate) {
+    event.preventDefault();
+    const lineIndex = Number(lineTranslate.dataset.lineIndex);
+    if (Number.isInteger(lineIndex)) toggleLineTranslation(lineIndex);
+    return;
+  }
 
   const timeButton = target.closest('.line-time');
   if (timeButton) {
@@ -1085,10 +1439,71 @@ function onTranscriptClick(event) {
   const wordIndex = Number(wordEl.dataset.wordIndex);
   if (!Number.isInteger(lineIndex) || !Number.isInteger(wordIndex)) return;
 
-  openWord(lineIndex, wordIndex, wordEl);
+  cancelHoverTimers();
+  openWord(lineIndex, wordIndex, wordEl, { source: 'click' });
+}
+
+function onTranscriptPointerOver(event) {
+  if (event.pointerType === 'touch' || event.buttons !== 0) return;
+  if (!(event.target instanceof Element)) return;
+  const selection = window.getSelection();
+  if (selection && !selection.isCollapsed && String(selection).trim()) return;
+  const wordEl = event.target.closest('.word');
+  if (!wordEl || wordEl.classList.contains('word-punctuation')) return;
+  if (state.popover.open && state.popover.pinned) return;
+  if (
+    event.relatedTarget instanceof Node &&
+    wordEl.contains(event.relatedTarget)
+  ) {
+    return;
+  }
+  scheduleHoverOpen(wordEl);
+}
+
+function onTranscriptPointerOut(event) {
+  if (!(event.target instanceof Element)) return;
+  const wordEl = event.target.closest('.word');
+  if (!wordEl || state.popover.pinned) return;
+  if (
+    event.relatedTarget instanceof Node &&
+    (wordEl.contains(event.relatedTarget) ||
+      els.wordPopover.contains(event.relatedTarget))
+  ) {
+    return;
+  }
+  if (state.popover.open && state.popover.anchor === wordEl) {
+    scheduleHoverClose();
+  } else if (state.hover.wordEl === wordEl) {
+    clearTimeout(state.hover.timer);
+    state.hover.timer = 0;
+    state.hover.wordEl = null;
+  }
+}
+
+function onTranscriptPointerDown(event) {
+  cancelHoverTimers();
+  if (event.target instanceof Element && event.target.closest('.word')) return;
+  if (state.popover.open && !state.popover.pinned) hidePopoverVisual();
+}
+
+function onPopoverPointerEnter() {
+  clearTimeout(state.hover.closeTimer);
+  state.hover.closeTimer = 0;
+}
+
+function onPopoverPointerLeave(event) {
+  if (!state.popover.open || state.popover.pinned) return;
+  if (
+    event.relatedTarget instanceof Node &&
+    els.wordPopover.contains(event.relatedTarget)
+  ) {
+    return;
+  }
+  scheduleHoverClose();
 }
 
 function onDocumentClick(event) {
+  cancelHoverTimers();
   if (!state.popover.open) return;
   const target = event.target;
   if (!(target instanceof Element)) {
@@ -1154,8 +1569,28 @@ function onKeyDown(event) {
     return;
   }
 
-  if (isFormTarget(event.target)) return;
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+  if (event.key === 'ArrowUp' && !blocksLineArrow(event.target)) {
+    if (event.repeat) return;
+    event.preventDefault();
+    jumpLine(-1);
+    return;
+  }
+
+  if (event.key === 'ArrowDown' && !blocksLineArrow(event.target)) {
+    if (event.repeat) return;
+    event.preventDefault();
+    jumpLine(1);
+    return;
+  }
+
+  if (isFormTarget(event.target)) return;
+
+  if (event.key === 'PageUp' || event.key === 'PageDown' || event.key === 'Home' || event.key === 'End') {
+    suspendFollowForScroll();
+    return;
+  }
 
   if (event.code === 'Space') {
     if (event.repeat) return;
@@ -1190,17 +1625,20 @@ function onKeyDown(event) {
 
 function onScroll() {
   if (performance.now() < state.programmaticScrollUntil) return;
-  if (state.popover.open) {
-    closePopover();
-    return;
-  }
 
-  if (state.follow) {
-    state.follow = false;
-    state.settings.followAudio = false;
-    updateControls(state.light);
-    persist('followAudio', false);
-  }
+  cancelHoverTimers();
+  if (state.popover.open) closePopover();
+}
+
+function onTranscriptWheel() {
+  suspendFollowForScroll();
+  cancelHoverTimers();
+  if (state.popover.open && !state.popover.pinned) hidePopoverVisual();
+}
+
+function onTranscriptPointerDownScroll(event) {
+  const rect = els.scrollArea.getBoundingClientRect();
+  if (event.clientX >= rect.right - 18) suspendFollowForScroll();
 }
 
 function onStorageChanged(changes, area) {
@@ -1212,6 +1650,8 @@ function onStorageChanged(changes, area) {
     const next = changes.targetLang.newValue === 'es' ? 'es' : 'pt-BR';
     if (next !== state.settings.targetLang) {
       state.settings.targetLang = next;
+      state.openLineTranslations.clear();
+      state.lineTranslationRequests.clear();
       targetChanged = true;
       changed = true;
     }
@@ -1244,7 +1684,14 @@ function onStorageChanged(changes, area) {
     const next = changes.followAudio.newValue !== false;
     state.follow = next;
     state.settings.followAudio = next;
+    clearFollowSuspension();
     if (next) requestAnimationFrame(() => scrollToActive(true));
+    changed = true;
+  }
+
+  if (changes.loopLine) {
+    state.settings.loopLine = changes.loopLine.newValue === true;
+    state.loopHoldUntil = performance.now() + 400;
     changed = true;
   }
 
@@ -1290,17 +1737,34 @@ function bindEvents() {
   els.followAudio.addEventListener('change', () => {
     state.follow = els.followAudio.checked;
     state.settings.followAudio = state.follow;
+    clearFollowSuspension();
     persist('followAudio', state.follow);
     if (state.follow) scrollToActive(true);
+  });
+
+  els.loopLine.addEventListener('change', () => {
+    state.settings.loopLine = els.loopLine.checked;
+    state.loopHoldUntil = performance.now() + 400;
+    persist('loopLine', state.settings.loopLine);
   });
 
   els.fullscreenButton.addEventListener('click', toggleFullscreen);
   els.closeButton.addEventListener('click', closeReader);
   els.retryButton.addEventListener('click', retryReader);
   els.transcript.addEventListener('click', onTranscriptClick);
+  els.transcript.addEventListener('pointerover', onTranscriptPointerOver);
+  els.transcript.addEventListener('pointerout', onTranscriptPointerOut);
+  els.transcript.addEventListener('pointerdown', onTranscriptPointerDown);
+  els.wordPopover.addEventListener('pointerenter', onPopoverPointerEnter);
+  els.wordPopover.addEventListener('pointerleave', onPopoverPointerLeave);
   document.addEventListener('click', onDocumentClick);
   document.addEventListener('keydown', onKeyDown);
   els.scrollArea.addEventListener('scroll', onScroll, { passive: true });
+  els.scrollArea.addEventListener('wheel', onTranscriptWheel, { passive: true });
+  els.scrollArea.addEventListener('touchmove', onTranscriptWheel, { passive: true });
+  els.scrollArea.addEventListener('pointerdown', onTranscriptPointerDownScroll, {
+    passive: true,
+  });
   window.addEventListener('resize', () => {
     if (state.popover.open && state.popover.anchor) {
       positionPopover(state.popover.anchor);
@@ -1311,6 +1775,7 @@ function bindEvents() {
     state.destroyed = true;
     clearTimeout(state.pollTimer);
     cancelAnimationFrame(state.rafId);
+    cancelHoverTimers();
   });
 
   document.addEventListener('fullscreenchange', updateFullscreenButton);

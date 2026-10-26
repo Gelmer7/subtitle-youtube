@@ -1,6 +1,6 @@
 # legrendas
 
-Extensão para estudar inglês no YouTube: legendas numa barra preta **abaixo do vídeo** e um **Modo leitura** numa janela separada, com a transcrição completa, o áudio do vídeo e tradução ao clicar nas palavras.
+Extensão para estudar inglês no YouTube: legendas numa barra preta **abaixo do vídeo** e um **Modo leitura** numa janela separada, com a transcrição completa, o áudio do vídeo e tradução ao passar o rato ou clicar nas palavras.
 
 ```text
 ┌──────────────────────────────────────┐
@@ -44,12 +44,15 @@ O que faz:
 
 - abre uma janela só com a transcrição, sem o vídeo;
 - destaca a linha e a palavra que estão a tocar;
-- faz auto-scroll suave; se rolarem manualmente, o seguimento pausa e podem reativá-lo em **Seguir áudio**;
+- faz auto-scroll suave; se rolarem manualmente, o seguimento suspende e retoma automaticamente na linha seguinte;
 - mostra a tradução por baixo de cada linha (respeita a opção **Mostrar a linha traduzida**);
-- clicar numa palavra abre um popover com a tradução;
+- passar o rato numa palavra mostra logo a tradução num popover compacto;
+- clicar numa palavra fixa o popover com o contexto e **Repetir frase**;
+- o ícone de tradução na linha ativa abre/fecha a tradução completa dessa linha, mesmo com a tradução global desligada;
 - **Repetir frase** salta para o início da frase e volta a tocar;
+- **Repetir linha** faz um loop contínuo da linha ativa até se saltar com `↑`/`↓`;
 - clicar no horário de uma linha salta o áudio para esse ponto;
-- controlos: play/pause, ±5 s, linha anterior/seguinte, velocidade, som, tradução, pausa ao traduzir e seguir áudio;
+- controlos: play/pause, ±5 s, linha anterior/seguinte, velocidade, som, tradução, pausa ao traduzir, seguir áudio e repetir linha;
 - botão **Ecrã inteiro** para focar apenas no texto.
 
 ### Pausar ao traduzir
@@ -61,15 +64,24 @@ Com o switch **Pausar ao traduzir** ligado:
 1. clicar numa palavra pausa o áudio;
 2. o áudio retoma quando o popover fecha, se estava a tocar;
 3. se o áudio já estava pausado, continua pausado;
-4. **Repetir frase** salta e toca sempre.
+4. passar o rato nunca pausa, mesmo com esta opção ligada;
+5. **Repetir frase** salta e toca sempre.
 
 A preferência fica guardada.
+
+### Tradução da linha
+
+- O ícone de tradução aparece na linha ativa e ao passar o rato numa linha.
+- Ao abrir, a tradução completa surge por baixo do inglês, com o rótulo **Tradução**.
+- Clicar outra vez fecha o bloco.
+- Funciona independentemente da opção global **Tradução**.
 
 ### Atalhos na janela do leitor
 
 - `Espaço`: play/pause
 - `←` / `→`: recuar/avançar 5 s
-- `[` / `]`: linha anterior/seguinte
+- `↑` / `↓`: linha anterior/seguinte
+- `[` / `]`: linha anterior/seguinte (alternativa)
 - `Esc`: fecha o popover de tradução
 
 ## Como funciona
@@ -80,7 +92,7 @@ A preferência fica guardada.
 4. O **Modo leitura** abre `reader.html` numa janela da extensão. A janela do leitor fala com a aba do YouTube através de `background.js`.
 5. O leitor pede o estado ao content script, desenha a transcrição e envia comandos de play, pause, seek, velocidade e mute de volta para o player.
 6. No modo leitura, o vídeo é escondido e a qualidade do player é baixada para a mais baixa disponível. Ao fechar a janela, o vídeo e a qualidade anterior são restaurados.
-7. Se o `tlang` não devolver tradução, o `background.js` usa o endpoint do Google Translate como fallback. O mesmo endpoint serve as traduções das palavras clicadas.
+7. Se o `tlang` não devolver tradução, o `background.js` usa o endpoint do Google Translate como fallback. O mesmo endpoint serve as traduções das palavras (hover ou clique) e das linhas traduzidas pelo ícone.
 
 ## Limitações importantes
 
@@ -93,13 +105,15 @@ A preferência fica guardada.
 - O YouTube pode mudar o player e quebrar a captura. As camadas de fallback tentam sempre mostrar a legenda nativa.
 - A tradução do YouTube e a do Google são automáticas; a qualidade varia.
 - O destaque por palavra é exato quando o YouTube fornece tempos por palavra. Nas legendas manuais, os tempos são interpolados pela duração da frase.
+- A tradução por hover precisa de rato ou caneta; em ecrãs táteis, usa o clique na palavra.
+- **Repetir linha** usa o fim da última palavra conhecida e fica suspenso durante anúncios; o loop só acontece com o leitor aberto e o áudio a tocar.
 
 ## Privacidade
 
 - As definições ficam em `chrome.storage.sync` (e as preferências do leitor também).
 - Não há analytics, contas nem histórico.
 - O texto das legendas é pedido ao YouTube.
-- Quando é preciso o fallback de tradução, ou quando clicas numa palavra, esse texto é enviado ao endpoint do Google Translate. Nada é guardado num servidor da extensão.
+- Quando é preciso o fallback de tradução, quando passas o rato ou clicas numa palavra, ou quando abres a tradução de uma linha, esse texto é enviado ao endpoint do Google Translate. Nada é guardado num servidor da extensão.
 
 ## Estrutura
 
