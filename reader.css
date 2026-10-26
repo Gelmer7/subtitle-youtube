@@ -46,22 +46,31 @@ button {
 
 .app {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
 }
 
 .topbar {
   grid-row: 1;
-  padding: 18px 26px 15px;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
 
 .video-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
   min-width: 0;
+  padding: 16px 22px 12px;
 }
 
 h1 {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   overflow: hidden;
   color: var(--text);
@@ -73,10 +82,16 @@ h1 {
 }
 
 .video-meta {
-  margin: 4px 0 0;
+  flex: 0 1 auto;
+  max-width: min(48%, 440px);
+  margin: 0;
+  overflow: hidden;
   color: var(--faint);
   font-size: 11.5px;
   line-height: 1.4;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .small-button,
@@ -366,16 +381,15 @@ select:focus-visible {
 }
 
 .controlbar {
-  grid-row: 4;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
-  min-height: 54px;
-  padding: 8px 18px;
-  border-top: 1px solid var(--border);
-  background: linear-gradient(180deg, #101012 0%, #0e0e10 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  gap: 14px;
+  min-height: 52px;
+  padding: 8px 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .control-group {
@@ -403,11 +417,13 @@ select:focus-visible {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   color: var(--muted);
   background: var(--panel-2);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease,
     transform 0.1s ease;
 }
@@ -422,8 +438,8 @@ select:focus-visible {
 
 .tool-button svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
@@ -439,8 +455,8 @@ select:focus-visible {
 }
 
 .play-button {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   color: #fff;
 }
 
@@ -484,7 +500,7 @@ select:focus-visible {
   gap: 4px;
   color: var(--muted);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -522,13 +538,13 @@ select:focus-visible {
 }
 
 select {
-  min-height: 30px;
-  padding: 4px 23px 4px 9px;
+  min-height: 32px;
+  padding: 4px 24px 4px 9px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--panel-2);
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -635,7 +651,7 @@ select:hover {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 86px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   z-index: 60;
   max-width: min(520px, calc(100vw - 32px));
   padding: 9px 13px;
@@ -662,8 +678,12 @@ select:hover {
 }
 
 @media (max-width: 760px) {
-  .topbar {
-    padding: 14px 16px 12px;
+  .video-heading {
+    padding: 14px 16px 11px;
+  }
+
+  .controlbar {
+    padding-inline: 16px;
   }
 
   .transcript-wrap {
@@ -679,86 +699,125 @@ select:hover {
   .line-text {
     font-size: calc(var(--reader-size) * 0.88);
   }
+}
+
+@media (max-width: 640px) {
+  .video-heading {
+    gap: 12px;
+    padding: 12px 14px 10px;
+  }
+
+  h1 {
+    font-size: 13px;
+  }
+
+  .video-meta {
+    max-width: 48%;
+    font-size: 11px;
+  }
 
   .controlbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "transport navigation"
+      "preferences preferences";
     gap: 8px;
-    padding: 8px 12px;
+    padding: 9px 14px 10px;
   }
 
   .control-group {
-    gap: 5px;
+    gap: 4px;
+  }
+
+  .transport {
+    grid-area: transport;
+    justify-self: start;
+    gap: 8px;
+  }
+
+  .navigation {
+    grid-area: navigation;
+    justify-self: end;
+    gap: 4px;
+  }
+
+  .preferences {
+    grid-area: preferences;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+    margin-top: 2px;
+  }
+
+  .tool-button {
+    width: 35px;
+    height: 35px;
+  }
+
+  .play-button {
+    width: 65px;
+    height: 35px;
+  }
+
+  .tool-button svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .preferences .tool-button {
+    width: 100%;
+  }
+
+  .time-display {
+    gap: 3px;
+    font-size: 11px;
+  }
+
+  select {
+    min-height: 35px;
+    padding: 4px 22px 4px 9px;
+    font-size: 11px;
+  }
+
+  .select-wrap::after {
+    right: 8px;
+    width: 5px;
+    height: 5px;
+  }
+}
+
+@media (max-width: 380px) {
+  .video-heading {
+    gap: 10px;
+    padding: 10px 12px 9px;
+  }
+
+  h1 {
+    font-size: 14px;
+  }
+
+  .video-meta {
+    max-width: 50%;
+    font-size: 10.5px;
+  }
+
+  .controlbar {
+    gap: 6px 4px;
+    padding: 8px 12px 9px;
   }
 
   .transport {
     gap: 7px;
   }
 
-  .tool-button {
-    width: 28px;
-    height: 28px;
-  }
-
-  .play-button {
-    width: 30px;
-    height: 30px;
-  }
-
-  .tool-button svg {
-    width: 15px;
-    height: 15px;
-  }
-
-  .time-display {
+  .navigation {
     gap: 3px;
-    font-size: 10px;
-  }
-
-  select {
-    min-height: 28px;
-    padding: 3px 21px 3px 8px;
-    font-size: 10px;
-  }
-
-  .select-wrap::after {
-    right: 8px;
-    width: 4px;
-    height: 4px;
-  }
-}
-
-@media (max-width: 480px) {
-  .controlbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 6px;
-    padding: 7px 10px;
-  }
-
-  .control-group {
-    gap: 3px;
-  }
-
-  .transport {
-    gap: 5px;
-  }
-
-  .tool-button {
-    width: 26px;
-    height: 26px;
-  }
-
-  .play-button {
-    width: 28px;
-    height: 28px;
-  }
-
-  .tool-button svg {
-    width: 14px;
-    height: 14px;
   }
 
   .time-display {
     gap: 2px;
-    font-size: 9.5px;
+    font-size: 10.5px;
   }
 
   .time-sep,
@@ -766,16 +825,40 @@ select:hover {
     display: none;
   }
 
+  .preferences {
+    gap: 5px;
+  }
+
   select {
-    min-height: 26px;
-    padding: 2px 18px 2px 7px;
-    font-size: 9.5px;
+    padding: 3px 20px 3px 8px;
+    font-size: 10.5px;
   }
 
   .select-wrap::after {
-    right: 6px;
+    right: 7px;
     width: 4px;
     height: 4px;
+  }
+}
+
+@media (pointer: coarse) and (min-width: 641px) {
+  .tool-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .play-button {
+    width: 46px;
+    height: 44px;
+  }
+
+  .tool-button svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  select {
+    min-height: 44px;
   }
 }
 
