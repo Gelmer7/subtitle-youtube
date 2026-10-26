@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>legrendas — Modo leitura</title>
+    <title>SubIngles — Modo leitura</title>
     <link rel="icon" href="icons/icon48.png" />
     <link rel="stylesheet" href="reader.css" />
   </head>
@@ -12,21 +12,8 @@
     <div class="app">
       <header class="topbar">
         <div class="video-heading">
-          <div class="brand-row">
-            <span class="brand">legrendas</span>
-            <span class="badge">Modo leitura</span>
-          </div>
           <h1 id="videoTitle">A ligar ao vídeo…</h1>
           <p id="videoMeta" class="video-meta"></p>
-        </div>
-        <div class="top-actions">
-          <span id="connection" class="connection" role="status">A ligar…</span>
-          <button id="fullscreenButton" class="text-button" type="button">
-            Ecrã inteiro
-          </button>
-          <button id="closeButton" class="icon-button" type="button" aria-label="Fechar modo leitura" title="Fechar">
-            ×
-          </button>
         </div>
       </header>
 
@@ -50,24 +37,31 @@
 
       <footer class="controlbar">
         <div class="control-group transport">
-          <button id="playButton" class="round-button" type="button" aria-label="Reproduzir" title="Reproduzir">
-            ▶
+          <button id="playButton" class="tool-button play-button" type="button" aria-label="Reproduzir" title="Reproduzir">
+            <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M8 5.1v13.8L19.2 12Z" />
+            </svg>
+            <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M9.5 5.5v13M14.5 5.5v13" stroke-width="2.2" />
+            </svg>
           </button>
-          <button id="backButton" class="small-button" type="button" aria-label="Recuar 5 segundos" title="Recuar 5 segundos">
-            −5s
-          </button>
-          <button id="forwardButton" class="small-button" type="button" aria-label="Avançar 5 segundos" title="Avançar 5 segundos">
-            +5s
-          </button>
-          <span id="timeDisplay" class="time-display">00:00 / 00:00</span>
+          <span id="timeDisplay" class="time-display">
+            <span id="timeCurrent">00:00</span>
+            <span class="time-sep" aria-hidden="true">/</span>
+            <span id="timeTotal" class="time-total">00:00</span>
+          </span>
         </div>
 
-        <div class="control-group navigation">
-          <button id="prevLineButton" class="small-button" type="button" aria-label="Linha anterior (seta acima)" title="Linha anterior (↑)">
-            Linha −
+        <div class="control-group navigation" role="group" aria-label="Navegação e velocidade">
+          <button id="prevLineButton" class="tool-button" type="button" aria-label="Linha anterior (seta acima)" title="Linha anterior (↑)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 18.5V6M6.5 11.5 12 6l5.5 5.5" />
+            </svg>
           </button>
-          <button id="nextLineButton" class="small-button" type="button" aria-label="Linha seguinte (seta abaixo)" title="Linha seguinte (↓)">
-            Linha +
+          <button id="nextLineButton" class="tool-button" type="button" aria-label="Linha seguinte (seta abaixo)" title="Linha seguinte (↓)">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 5.5V18M6.5 12.5 12 18l5.5-5.5" />
+            </svg>
           </button>
           <label class="select-wrap">
             <span class="sr-only">Velocidade</span>
@@ -78,28 +72,71 @@
               <option value="1.5">1,5×</option>
             </select>
           </label>
-          <button id="muteButton" class="small-button" type="button" aria-label="Silenciar" title="Silenciar">
-            Som
+          <button id="muteButton" class="tool-button" type="button" aria-label="Silenciar" title="Silenciar">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" />
+              <path class="sound-wave" d="M16 9a5 5 0 0 1 0 6" />
+              <path class="sound-wave" d="M19.364 18.364a9 9 0 0 0 0-12.728" />
+              <path class="sound-muted" d="m22 9-6 6" />
+              <path class="sound-muted" d="m16 9 6 6" />
+            </svg>
           </button>
         </div>
 
-        <div class="control-group preferences">
-          <label class="toggle">
-            <input id="showTranslation" type="checkbox" />
-            <span>Tradução</span>
-          </label>
-          <label class="toggle">
-            <input id="pauseOnLookup" type="checkbox" />
-            <span>Pausar ao traduzir</span>
-          </label>
-          <label class="toggle">
-            <input id="followAudio" type="checkbox" checked />
-            <span>Seguir áudio</span>
-          </label>
-          <label class="toggle" title="Ao chegar ao fim da linha, volta ao início até saltares com ↑/↓">
-            <input id="loopLine" type="checkbox" />
-            <span>Repetir linha</span>
-          </label>
+        <div class="control-group preferences" role="group" aria-label="Preferências de leitura">
+          <button
+            id="showTranslation"
+            class="tool-button"
+            type="button"
+            aria-pressed="true"
+            aria-label="Tradução"
+            title="Mostrar ou ocultar a tradução"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 5h10M9 3v2c0 4.6-2.3 8-6 10M5.5 9.5c1.8 3.2 4.5 5.6 8.1 7.2M14 20l4.2-10L22 20M15.7 16.5h5.1" />
+            </svg>
+          </button>
+          <button
+            id="pauseOnLookup"
+            class="tool-button"
+            type="button"
+            aria-pressed="false"
+            aria-label="Pausar ao traduzir"
+            title="Pausar o áudio ao abrir a tradução de uma palavra"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M10 9v6M14 9v6" />
+            </svg>
+          </button>
+          <button
+            id="followAudio"
+            class="tool-button"
+            type="button"
+            aria-pressed="true"
+            aria-label="Seguir áudio"
+            title="Acompanhar automaticamente a linha que está a ser falada"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+            </svg>
+          </button>
+          <button
+            id="loopLine"
+            class="tool-button"
+            type="button"
+            aria-pressed="false"
+            aria-label="Repetir linha"
+            title="Repetir a linha ativa até desligar ou saltar com ↑/↓"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="m17 2 4 4-4 4" />
+              <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+              <path d="m7 22-4-4 4-4" />
+              <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+              <path d="M11 10h1v4" />
+            </svg>
+          </button>
         </div>
       </footer>
     </div>

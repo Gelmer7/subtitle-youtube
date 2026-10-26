@@ -1,4 +1,4 @@
-# legrendas
+# SubIngles
 
 Extensão para estudar inglês no YouTube: legendas numa barra preta **abaixo do vídeo** e um **Modo leitura** numa janela separada, com a transcrição completa, o áudio do vídeo e tradução ao passar o rato ou clicar nas palavras.
 

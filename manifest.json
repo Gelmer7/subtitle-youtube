@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "legrendas",
+  "name": "SubIngles",
   "version": "0.3.0",
   "description": "Legendas em inglês com tradução e um modo de leitura com o áudio do vídeo do YouTube.",
   "minimum_chrome_version": "111",
@@ -30,7 +30,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "legrendas",
+    "default_title": "SubIngles",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

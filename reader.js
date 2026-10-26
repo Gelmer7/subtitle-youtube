@@ -10,9 +10,9 @@ const SETTINGS_DEFAULTS = {
 };
 
 const READER_PREFS_VERSION = 2;
+const LOOP_LEAD = 0.06;
 
 const els = {
-  connection: document.getElementById('connection'),
   videoTitle: document.getElementById('videoTitle'),
   videoMeta: document.getElementById('videoMeta'),
   statusBar: document.getElementById('statusBar'),
@@ -22,9 +22,8 @@ const els = {
   emptyText: document.getElementById('emptyText'),
   retryButton: document.getElementById('retryButton'),
   playButton: document.getElementById('playButton'),
-  backButton: document.getElementById('backButton'),
-  forwardButton: document.getElementById('forwardButton'),
-  timeDisplay: document.getElementById('timeDisplay'),
+  timeCurrent: document.getElementById('timeCurrent'),
+  timeTotal: document.getElementById('timeTotal'),
   prevLineButton: document.getElementById('prevLineButton'),
   nextLineButton: document.getElementById('nextLineButton'),
   rateSelect: document.getElementById('rateSelect'),
@@ -33,8 +32,6 @@ const els = {
   pauseOnLookup: document.getElementById('pauseOnLookup'),
   followAudio: document.getElementById('followAudio'),
   loopLine: document.getElementById('loopLine'),
-  fullscreenButton: document.getElementById('fullscreenButton'),
-  closeButton: document.getElementById('closeButton'),
   wordPopover: document.getElementById('wordPopover'),
   popWord: document.getElementById('popWord'),
   popTranslation: document.getElementById('popTranslation'),
@@ -84,8 +81,12 @@ const state = {
     lineIndex: -1,
     lineStart: 0,
   },
-  loopBusy: false,
-  loopHoldUntil: 0,
+  loop: {
+    index: -1,
+    seeking: false,
+    retryAt: 0,
+    endedRetryAt: 0,
+  },
   toastTimer: 0,
   destroyed: false,
   videoId: null,
@@ -206,20 +207,24 @@ async function loadSettings() {
 function applySettingsToUi() {
   const readerSize = Math.min(42, Math.max(22, state.settings.fontSize + 6));
   document.documentElement.style.setProperty('--reader-size', `${readerSize}px`);
-  els.showTranslation.checked = state.settings.showTranslation;
-  els.pauseOnLookup.checked = state.settings.pauseOnLookup;
-  els.followAudio.checked = state.follow;
-  els.loopLine.checked = state.settings.loopLine;
+  updatePreferenceButtons();
   els.transcript.classList.toggle(
     'hide-translation',
     !state.settings.showTranslation
   );
 }
 
-function setConnection(text, kind = '') {
-  els.connection.textContent = text;
-  if (kind) els.connection.dataset.state = kind;
-  else delete els.connection.dataset.state;
+function updatePreferenceButtons() {
+  els.showTranslation.setAttribute(
+    'aria-pressed',
+    String(state.settings.showTranslation)
+  );
+  els.pauseOnLookup.setAttribute(
+    'aria-pressed',
+    String(state.settings.pauseOnLookup)
+  );
+  els.followAudio.setAttribute('aria-pressed', String(state.follow));
+  els.loopLine.setAttribute('aria-pressed', String(state.settings.loopLine));
 }
 
 function setStatus(text, kind = '') {
@@ -279,7 +284,8 @@ function cachedLineTranslation(line) {
 
 function clearFollowSuspension() {
   state.followSuspended = false;
-  els.followAudio.title = 'Seguir áudio';
+  els.followAudio.title =
+    'Acompanhar automaticamente a linha que está a ser falada';
 }
 
 function suspendFollowForScroll() {
@@ -331,20 +337,6 @@ function describeError(code) {
   }
 }
 
-function shortConnectionLabel(code) {
-  switch (code) {
-    case 'disabled':
-      return 'Desativada';
-    case 'not-watch':
-      return 'Sem vídeo';
-    case 'tab-unavailable':
-    case 'timeout':
-      return 'Vídeo fechado';
-    default:
-      return 'Sem ligação';
-  }
-}
-
 function getEstimatedTime() {
   if (!state.base) return 0;
   if (state.base.paused || state.base.ad || state.base.ended) {
@@ -364,13 +356,14 @@ function updateTimeDisplay(force = false) {
   if (!force && second === state.lastDisplayedSecond) return;
   state.lastDisplayedSecond = second;
   const duration = state.light && state.light.duration ? state.light.duration : 0;
-  els.timeDisplay.textContent = `${formatTime(time)} / ${formatTime(duration)}`;
+  els.timeCurrent.textContent = formatTime(time);
+  els.timeTotal.textContent = formatTime(duration);
 }
 
 function updateHeader(data) {
   const title = data.title || 'Vídeo do YouTube';
   if (els.videoTitle.textContent !== title) els.videoTitle.textContent = title;
-  document.title = `${title} — legrendas`;
+  document.title = `${title} — SubIngles`;
 
   const parts = [];
   if (data.channel) parts.push(data.channel);
@@ -380,14 +373,6 @@ function updateHeader(data) {
   const meta = parts.join('  ·  ');
   if (els.videoMeta.textContent !== meta) els.videoMeta.textContent = meta;
   els.videoMeta.hidden = !meta;
-
-  if (state.connectionError) return;
-
-  if (data.ad) setConnection('Anúncio', 'warn');
-  else if (data.loading) setConnection('A carregar', 'warn');
-  else if (data.ready) setConnection('Ligado', 'ok');
-  else if (data.fallback) setConnection('Legenda nativa', 'warn');
-  else setConnection('Sem legendas', 'warn');
 }
 
 function updateStatus(data) {
@@ -427,7 +412,6 @@ function updateStatus(data) {
 
 function updateControls(data) {
   const paused = data ? !!data.paused : true;
-  els.playButton.textContent = paused ? '▶' : '❚❚';
   els.playButton.setAttribute(
     'aria-label',
     paused ? 'Reproduzir' : 'Pausar'
@@ -443,7 +427,6 @@ function updateControls(data) {
     if (option) els.rateSelect.value = option.value;
 
     const isMuted = !!data.muted || Number(data.volume) === 0;
-    els.muteButton.textContent = isMuted ? 'Mudo' : 'Som';
     els.muteButton.classList.toggle('is-on', isMuted);
     els.muteButton.setAttribute(
       'aria-label',
@@ -451,11 +434,6 @@ function updateControls(data) {
     );
     els.muteButton.title = isMuted ? 'Ativar som' : 'Silenciar';
   }
-
-  els.showTranslation.checked = state.settings.showTranslation;
-  els.pauseOnLookup.checked = state.settings.pauseOnLookup;
-  els.followAudio.checked = state.follow;
-  els.loopLine.checked = state.settings.loopLine;
 }
 
 function updateEmptyState(data) {
@@ -514,6 +492,7 @@ function renderTranscript() {
   state.wordEls = [];
   state.activeLine = -1;
   state.activeWord = -1;
+  resetLoopState();
 
   const fragment = document.createDocumentFragment();
 
@@ -693,30 +672,100 @@ function setActive(lineIndex, wordIndex) {
   if (lineChanged && lineIndex >= 0) scrollToActive();
 }
 
+function resetLoopState() {
+  state.loop.index = -1;
+  state.loop.seeking = false;
+  state.loop.retryAt = 0;
+  state.loop.endedRetryAt = 0;
+}
+
+function armLoopTarget() {
+  if (!state.settings.loopLine) {
+    resetLoopState();
+    return;
+  }
+
+  const index =
+    state.activeLine >= 0
+      ? state.activeLine
+      : lineIndexForTime(getEstimatedTime());
+  state.loop.index = index;
+  state.loop.seeking = false;
+  state.loop.retryAt = 0;
+  state.loop.endedRetryAt = 0;
+}
+
+function setLoopEnabled(enabled, persistChange = true) {
+  state.settings.loopLine = !!enabled;
+  armLoopTarget();
+  updatePreferenceButtons();
+  if (persistChange) persist('loopLine', state.settings.loopLine);
+  updatePlaybackUi(true);
+}
+
 function updatePlaybackUi(force = false) {
   updateTimeDisplay(force);
 
   if (!state.lines.length) return;
 
   const time = getEstimatedTime();
-
-  if (
-    state.settings.loopLine &&
+  const now = performance.now();
+  const playing = !!(
     state.base &&
     !state.base.paused &&
     !state.base.ad &&
-    !state.base.ended &&
-    state.activeLine >= 0 &&
-    performance.now() >= state.loopHoldUntil
-  ) {
-    const activeLine = state.lines[state.activeLine];
-    if (activeLine && time >= lineSpeechEnd(activeLine) - 0.03) {
-      restartLoopLine(state.activeLine);
+    !state.base.ended
+  );
+
+  if (!state.settings.loopLine) {
+    state.loop.index = -1;
+  } else if (state.loop.index >= state.lines.length) {
+    resetLoopState();
+  } else if (state.loop.index < 0 && state.activeLine >= 0) {
+    state.loop.index = state.activeLine;
+  }
+
+  const loopIndex = state.loop.index;
+  const loopLine = loopIndex >= 0 ? state.lines[loopIndex] : null;
+
+  if (loopLine) {
+    if (state.loop.seeking) {
+      if (state.activeLine !== loopIndex) setActive(loopIndex, -1);
+      return;
+    }
+
+    if (now < state.loop.retryAt) {
+      if (state.activeLine !== loopIndex) setActive(loopIndex, -1);
+      return;
+    }
+
+    if (playing && time >= lineSpeechEnd(loopLine) - LOOP_LEAD) {
+      restartLoopLine(loopIndex);
+      return;
+    }
+
+    if (
+      state.base &&
+      state.base.ended &&
+      !state.base.ad &&
+      now >= state.loop.endedRetryAt
+    ) {
+      state.loop.endedRetryAt = now + 1500;
+      restartLoopLine(loopIndex, true);
       return;
     }
   }
 
-  const lineIndex = lineIndexForTime(time);
+  let lineIndex = lineIndexForTime(time);
+
+  if (
+    loopLine &&
+    lineIndex > loopIndex &&
+    time <= lineSpeechEnd(loopLine) + 0.25
+  ) {
+    lineIndex = loopIndex;
+  }
+
   let wordIndex = -1;
 
   if (lineIndex >= 0) {
@@ -727,26 +776,57 @@ function updatePlaybackUi(force = false) {
   setActive(lineIndex, wordIndex);
 }
 
-function restartLoopLine(index) {
-  if (state.loopBusy || !state.base) return;
+function restartLoopLine(index, fromEnded = false) {
+  if (!state.base) return;
   const line = state.lines[index];
   if (!line) return;
 
-  state.loopBusy = true;
-  state.loopHoldUntil = performance.now() + 1200;
+  state.loop.index = index;
+  state.loop.seeking = true;
   state.base.time = Math.max(0, Number(line.start) || 0);
   state.base.at = performance.now();
+  state.base.paused = false;
+  state.base.ended = false;
   state.lastDisplayedSecond = -1;
   updateTimeDisplay(true);
+  setActive(index, -1);
 
-  const release = () => {
-    state.loopBusy = false;
+  const finish = (result) => {
+    if (state.destroyed || state.loop.index !== index) return;
+    state.loop.seeking = false;
+
+    const actual = result ? Number(result.currentTime) : NaN;
+    const seeked = !!(
+      result &&
+      result.ok !== false &&
+      Number.isFinite(actual) &&
+      actual <= line.start + 1
+    );
+
+    if (!seeked) {
+      state.loop.retryAt = performance.now() + 450;
+      return;
+    }
+
+    if (fromEnded) {
+      runCommand('play', undefined, { silent: true }).then((played) => {
+        if (!played || played.ok === false) {
+          state.loop.retryAt = performance.now() + 1200;
+          state.loop.endedRetryAt = performance.now() + 1200;
+        }
+      });
+    }
   };
 
-  runCommand('seek', line.start, { silent: true }).then(release, release);
+  runCommand('seek', line.start, { silent: true }).then(finish, () => finish(null));
+
   setTimeout(() => {
-    if (state.loopBusy) state.loopBusy = false;
-  }, 2600);
+    if (state.destroyed) return;
+    if (state.loop.index === index && state.loop.seeking) {
+      state.loop.seeking = false;
+      state.loop.retryAt = performance.now() + 450;
+    }
+  }, 2000);
 }
 
 function scrollToActive(force = false) {
@@ -802,8 +882,6 @@ function applyPlayback(data) {
     state.pendingFull = null;
     state.openLineTranslations.clear();
     state.lineTranslationRequests.clear();
-    state.loopBusy = false;
-    state.loopHoldUntil = performance.now() + 400;
     state.videoId = data.videoId;
     renderTranscript();
   } else if (data.videoId) {
@@ -824,6 +902,23 @@ function applyPlayback(data) {
     ad: !!data.ad,
     ended: !!data.ended,
   };
+
+  if (
+    state.settings.loopLine &&
+    !state.loop.seeking &&
+    performance.now() >= state.loop.retryAt
+  ) {
+    const loopLine =
+      state.loop.index >= 0 ? state.lines[state.loop.index] : null;
+    if (!loopLine) {
+      state.loop.index = -1;
+    } else if (
+      state.base.time > lineSpeechEnd(loopLine) + 2 ||
+      state.base.time < loopLine.start - 2
+    ) {
+      state.loop.index = lineIndexForTime(state.base.time);
+    }
+  }
 
   updateHeader(data);
   updateControls(data);
@@ -869,7 +964,6 @@ function applyFailure(result) {
     state.base.at = performance.now();
   }
 
-  setConnection(shortConnectionLabel(code), 'error');
   setStatus(state.connectionError, 'error');
 
   if (!state.lines.length) {
@@ -1021,21 +1115,33 @@ async function controlPlayback(play) {
 async function seekBy(delta) {
   if (!state.base) return;
   const target = Math.max(0, getEstimatedTime() + delta);
-  state.base.time = Math.min(
+  const next = Math.min(
     target,
     state.base.duration > 0 ? state.base.duration : target
   );
+  state.base.time = next;
   state.base.at = performance.now();
-  state.loopHoldUntil = performance.now() + 900;
+  if (state.settings.loopLine) {
+    state.loop.index = lineIndexForTime(next);
+    state.loop.seeking = false;
+    state.loop.retryAt = 0;
+    state.loop.endedRetryAt = 0;
+  }
   updatePlaybackUi(true);
   await runCommand('seek-by', delta, { silent: true });
 }
 
 async function seekTo(seconds) {
   if (!state.base) return;
-  state.base.time = Math.max(0, Number(seconds) || 0);
+  const target = Math.max(0, Number(seconds) || 0);
+  state.base.time = target;
   state.base.at = performance.now();
-  state.loopHoldUntil = performance.now() + 900;
+  if (state.settings.loopLine) {
+    state.loop.index = lineIndexForTime(target);
+    state.loop.seeking = false;
+    state.loop.retryAt = 0;
+    state.loop.endedRetryAt = 0;
+  }
   updatePlaybackUi(true);
   await runCommand('seek', state.base.time, { silent: true });
 }
@@ -1054,7 +1160,7 @@ async function jumpLine(direction) {
 
   index = Math.min(state.lines.length - 1, Math.max(0, index));
   clearFollowSuspension();
-  state.loopHoldUntil = performance.now() + 1000;
+  state.loop.index = state.settings.loopLine ? index : -1;
 
   const target = state.lines[index];
   await seekTo(target.start);
@@ -1291,8 +1397,7 @@ async function repeatLine() {
   const start = state.popover.lineStart;
   closePopover({ resume: false });
   state.lookupSession = null;
-  state.loopHoldUntil = performance.now() + 1200;
-  await runCommand('seek', start, { silent: true });
+  await seekTo(start);
   await runCommand('play');
 }
 
@@ -1397,13 +1502,6 @@ function toggleLineTranslation(lineIndex) {
 
   updateLineTranslationDom(lineIndex);
   if (open) ensureLineTranslation(lineIndex);
-}
-
-function updateCheckboxSettings() {
-  els.showTranslation.checked = state.settings.showTranslation;
-  els.pauseOnLookup.checked = state.settings.pauseOnLookup;
-  els.followAudio.checked = state.follow;
-  els.loopLine.checked = state.settings.loopLine;
 }
 
 function persist(key, value) {
@@ -1524,35 +1622,6 @@ async function retryReader() {
   }
   setTimeout(() => requestFull(true), 900);
   schedulePoll(1300);
-}
-
-async function closeReader() {
-  const result = await sendBackground('legrendas:close-reader', {
-    tabId: state.tabId,
-  });
-  if (!result || result.ok === false) {
-    try {
-      window.close();
-    } catch {
-      // ignore
-    }
-  }
-}
-
-function toggleFullscreen() {
-  if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
-  } else {
-    document.documentElement.requestFullscreen().catch(() => {
-      showToast('O Chrome não permitiu entrar em ecrã inteiro.');
-    });
-  }
-}
-
-function updateFullscreenButton() {
-  els.fullscreenButton.textContent = document.fullscreenElement
-    ? 'Sair de ecrã inteiro'
-    : 'Ecrã inteiro';
 }
 
 function togglePlayPause() {
@@ -1690,12 +1759,14 @@ function onStorageChanged(changes, area) {
   }
 
   if (changes.loopLine) {
-    state.settings.loopLine = changes.loopLine.newValue === true;
-    state.loopHoldUntil = performance.now() + 400;
+    const next = changes.loopLine.newValue === true;
+    if (next !== state.settings.loopLine) {
+      setLoopEnabled(next, false);
+    }
     changed = true;
   }
 
-  if (changed) updateCheckboxSettings();
+  if (changed) updatePreferenceButtons();
 
   if (targetChanged) {
     closePopover();
@@ -1705,8 +1776,6 @@ function onStorageChanged(changes, area) {
 
 function bindEvents() {
   els.playButton.addEventListener('click', togglePlayPause);
-  els.backButton.addEventListener('click', () => seekBy(-5));
-  els.forwardButton.addEventListener('click', () => seekBy(5));
   els.prevLineButton.addEventListener('click', () => jumpLine(-1));
   els.nextLineButton.addEventListener('click', () => jumpLine(1));
   els.rateSelect.addEventListener('change', () => {
@@ -1720,36 +1789,35 @@ function bindEvents() {
     await runCommand('mute', nextMuted, { silent: true });
   });
 
-  els.showTranslation.addEventListener('change', () => {
-    state.settings.showTranslation = els.showTranslation.checked;
+  els.showTranslation.addEventListener('click', () => {
+    state.settings.showTranslation = !state.settings.showTranslation;
     els.transcript.classList.toggle(
       'hide-translation',
       !state.settings.showTranslation
     );
+    updatePreferenceButtons();
     persist('showTranslation', state.settings.showTranslation);
   });
 
-  els.pauseOnLookup.addEventListener('change', () => {
-    state.settings.pauseOnLookup = els.pauseOnLookup.checked;
+  els.pauseOnLookup.addEventListener('click', () => {
+    state.settings.pauseOnLookup = !state.settings.pauseOnLookup;
+    updatePreferenceButtons();
     persist('pauseOnLookup', state.settings.pauseOnLookup);
   });
 
-  els.followAudio.addEventListener('change', () => {
-    state.follow = els.followAudio.checked;
+  els.followAudio.addEventListener('click', () => {
+    state.follow = !state.follow;
     state.settings.followAudio = state.follow;
     clearFollowSuspension();
+    updatePreferenceButtons();
     persist('followAudio', state.follow);
     if (state.follow) scrollToActive(true);
   });
 
-  els.loopLine.addEventListener('change', () => {
-    state.settings.loopLine = els.loopLine.checked;
-    state.loopHoldUntil = performance.now() + 400;
-    persist('loopLine', state.settings.loopLine);
+  els.loopLine.addEventListener('click', () => {
+    setLoopEnabled(!state.settings.loopLine);
   });
 
-  els.fullscreenButton.addEventListener('click', toggleFullscreen);
-  els.closeButton.addEventListener('click', closeReader);
   els.retryButton.addEventListener('click', retryReader);
   els.transcript.addEventListener('click', onTranscriptClick);
   els.transcript.addEventListener('pointerover', onTranscriptPointerOver);
@@ -1778,7 +1846,6 @@ function bindEvents() {
     cancelHoverTimers();
   });
 
-  document.addEventListener('fullscreenchange', updateFullscreenButton);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     schedulePoll(80);
@@ -1807,15 +1874,12 @@ async function init() {
 
   await loadSettings();
   bindEvents();
-  updateCheckboxSettings();
-  updateFullscreenButton();
+  updatePreferenceButtons();
   updateEmptyState(null);
-  setConnection('A ligar…', 'warn');
   startRenderLoop();
 
   if (!Number.isInteger(state.tabId) || state.tabId <= 0) {
     state.connectionError = describeError('not-watch');
-    setConnection('Sem vídeo', 'error');
     setStatus(state.connectionError, 'error');
     updateEmptyState({
       ok: false,
@@ -1844,7 +1908,6 @@ async function init() {
 
 init().catch((error) => {
   state.connectionError = `Não foi possível iniciar o leitor: ${error.message || error}`;
-  setConnection('Erro', 'error');
   setStatus(state.connectionError, 'error');
   updateEmptyState({
     ok: false,
