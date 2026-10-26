@@ -2,9 +2,9 @@
 
 const SETTINGS_DEFAULTS = {
   targetLang: 'pt-BR',
-  showTranslation: true,
+  showTranslation: false,
   fontSize: 20,
-  pauseOnLookup: false,
+  pauseOnLookup: true,
   followAudio: true,
   loopLine: false,
 };
@@ -21,17 +21,10 @@ const els = {
   emptyState: document.getElementById('emptyState'),
   emptyText: document.getElementById('emptyText'),
   retryButton: document.getElementById('retryButton'),
-  playButton: document.getElementById('playButton'),
   timeCurrent: document.getElementById('timeCurrent'),
   timeTotal: document.getElementById('timeTotal'),
-  prevLineButton: document.getElementById('prevLineButton'),
-  nextLineButton: document.getElementById('nextLineButton'),
   rateSelect: document.getElementById('rateSelect'),
-  muteButton: document.getElementById('muteButton'),
-  showTranslation: document.getElementById('showTranslation'),
-  pauseOnLookup: document.getElementById('pauseOnLookup'),
   followAudio: document.getElementById('followAudio'),
-  loopLine: document.getElementById('loopLine'),
   wordPopover: document.getElementById('wordPopover'),
   popWord: document.getElementById('popWord'),
   popTranslation: document.getElementById('popTranslation'),
@@ -56,6 +49,9 @@ const state = {
   connectionError: '',
   lineEls: [],
   wordEls: [],
+  linePlayEls: [],
+  lineLoopEls: [],
+  toolActive: -1,
   activeLine: -1,
   activeWord: -1,
   lastDisplayedSecond: -1,
@@ -169,8 +165,8 @@ function setSync(values) {
 
 function normalizeSettings() {
   state.settings.targetLang = state.settings.targetLang === 'es' ? 'es' : 'pt-BR';
-  state.settings.showTranslation = state.settings.showTranslation !== false;
-  state.settings.pauseOnLookup = state.settings.pauseOnLookup === true;
+  state.settings.showTranslation = false;
+  state.settings.pauseOnLookup = true;
   state.settings.followAudio = state.settings.followAudio !== false;
   state.settings.loopLine = state.settings.loopLine === true;
   state.settings.fontSize = Math.min(
@@ -215,16 +211,59 @@ function applySettingsToUi() {
 }
 
 function updatePreferenceButtons() {
-  els.showTranslation.setAttribute(
-    'aria-pressed',
-    String(state.settings.showTranslation)
-  );
-  els.pauseOnLookup.setAttribute(
-    'aria-pressed',
-    String(state.settings.pauseOnLookup)
-  );
   els.followAudio.setAttribute('aria-pressed', String(state.follow));
-  els.loopLine.setAttribute('aria-pressed', String(state.settings.loopLine));
+  syncLineToolState();
+}
+
+function syncLineToolState() {
+  const playing = isCurrentlyPlaying();
+  const active = state.activeLine;
+  const previous = state.toolActive;
+
+  if (previous >= 0 && previous !== active) {
+    const prevPlay = state.linePlayEls[previous];
+    if (prevPlay) {
+      prevPlay.classList.remove('is-playing');
+      const prevLine = state.lines[previous];
+      const label = `Reproduzir a partir de ${formatTime(
+        prevLine ? prevLine.start : 0
+      )}`;
+      prevPlay.setAttribute('aria-label', label);
+      prevPlay.title = label;
+    }
+
+    const prevLoop = state.lineLoopEls[previous];
+    if (prevLoop) {
+      prevLoop.setAttribute('aria-pressed', 'false');
+      prevLoop.setAttribute('aria-label', 'Repetir esta linha');
+      prevLoop.title = 'Repetir esta linha';
+    }
+  }
+
+  const line = state.lines[active];
+  const playButton = state.linePlayEls[active];
+
+  if (playButton) {
+    playButton.classList.toggle('is-playing', playing);
+    const label = playing
+      ? 'Pausar'
+      : `Reproduzir a partir de ${formatTime(line ? line.start : 0)}`;
+    playButton.setAttribute('aria-label', label);
+    playButton.title = label;
+  }
+
+  const loopButton = state.lineLoopEls[active];
+  if (loopButton) {
+    const looping = state.settings.loopLine;
+    loopButton.setAttribute('aria-pressed', String(looping));
+    loopButton.setAttribute(
+      'aria-label',
+      looping ? 'Deixar de repetir esta linha' : 'Repetir esta linha'
+    );
+    loopButton.title = loopButton.getAttribute('aria-label');
+  }
+
+  state.toolActive = active;
 }
 
 function setStatus(text, kind = '') {
@@ -411,29 +450,15 @@ function updateStatus(data) {
 }
 
 function updateControls(data) {
-  const paused = data ? !!data.paused : true;
-  els.playButton.setAttribute(
-    'aria-label',
-    paused ? 'Reproduzir' : 'Pausar'
-  );
-  els.playButton.title = paused ? 'Reproduzir' : 'Pausar';
-  els.playButton.classList.toggle('is-playing', !paused);
-
   if (data) {
     const rate = Number(data.rate) || 1;
     const option = Array.from(els.rateSelect.options).find(
       (item) => Number(item.value) === rate
     );
     if (option) els.rateSelect.value = option.value;
-
-    const isMuted = !!data.muted || Number(data.volume) === 0;
-    els.muteButton.classList.toggle('is-on', isMuted);
-    els.muteButton.setAttribute(
-      'aria-label',
-      isMuted ? 'Ativar som' : 'Silenciar'
-    );
-    els.muteButton.title = isMuted ? 'Ativar som' : 'Silenciar';
   }
+
+  syncLineToolState();
 }
 
 function updateEmptyState(data) {
@@ -490,6 +515,9 @@ function updateEmptyState(data) {
 function renderTranscript() {
   state.lineEls = [];
   state.wordEls = [];
+  state.linePlayEls = [];
+  state.lineLoopEls = [];
+  state.toolActive = -1;
   state.activeLine = -1;
   state.activeWord = -1;
   resetLoopState();
@@ -505,13 +533,6 @@ function renderTranscript() {
     lineEl.className = 'line';
     lineEl.dataset.lineIndex = String(lineIndex);
     lineEl.classList.toggle('is-translation-open', translationOpen);
-
-    const timeButton = document.createElement('button');
-    timeButton.type = 'button';
-    timeButton.className = 'line-time';
-    timeButton.dataset.time = String(line.start);
-    timeButton.textContent = formatTime(line.start);
-    timeButton.title = `Ir para ${formatTime(line.start)}`;
 
     const body = document.createElement('div');
     body.className = 'line-body';
@@ -557,15 +578,46 @@ function renderTranscript() {
     translateButton.setAttribute('aria-expanded', String(translationOpen));
     translateButton.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
-      '<path d="M4 5h10M9 3v2c0 4.6-2.3 8-6 10M5.5 9.5c1.8 3.2 4.5 5.6 8.1 7.2M14 20l4.2-10L22 20M15.7 16.5h5.1" ' +
-      'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M4 5h10M9 3v2c0 4.6-2.3 8-6 10M5.5 9.5c1.8 3.2 4.5 5.6 8.1 7.2M14 20l4.2-10L22 20M15.7 16.5h5.1" />' +
       '</svg>';
-    tools.append(translateButton);
+    const loopButton = document.createElement('button');
+    loopButton.type = 'button';
+    loopButton.className = 'line-loop';
+    loopButton.dataset.lineIndex = String(lineIndex);
+    loopButton.setAttribute('aria-pressed', 'false');
+    loopButton.setAttribute('aria-label', 'Repetir esta linha');
+    loopButton.title = 'Repetir esta linha';
+    loopButton.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<path d="M20.5 12a8.5 8.5 0 1 1-2.49-6.01" />' +
+      '<path d="M20.5 3.5V9H15" />' +
+      '</svg>';
 
-    lineEl.append(timeButton, body, tools);
+    const playButton = document.createElement('button');
+    playButton.type = 'button';
+    playButton.className = 'line-play';
+    playButton.dataset.lineIndex = String(lineIndex);
+    playButton.setAttribute(
+      'aria-label',
+      `Reproduzir a partir de ${formatTime(line.start)}`
+    );
+    playButton.title = `Reproduzir a partir de ${formatTime(line.start)}`;
+    playButton.innerHTML =
+      '<svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<path d="M8 5.1v13.8L19.2 12Z" />' +
+      '</svg>' +
+      '<svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<path d="M9.5 5.5v13M14.5 5.5v13" />' +
+      '</svg>';
+
+    tools.append(playButton, loopButton, translateButton);
+
+    lineEl.append(body, tools);
     fragment.append(lineEl);
     state.lineEls[lineIndex] = lineEl;
     state.wordEls[lineIndex] = wordEls;
+    state.linePlayEls[lineIndex] = playButton;
+    state.lineLoopEls[lineIndex] = loopButton;
   });
 
   els.transcript.replaceChildren(fragment);
@@ -657,6 +709,8 @@ function setActive(lineIndex, wordIndex) {
     if (lineIndex >= 0 && state.lineEls[lineIndex]) {
       state.lineEls[lineIndex].classList.add('is-active');
     }
+
+    syncLineToolState();
   }
 
   if (wordIndex !== state.activeWord) {
@@ -698,7 +752,7 @@ function armLoopTarget() {
 function setLoopEnabled(enabled, persistChange = true) {
   state.settings.loopLine = !!enabled;
   armLoopTarget();
-  updatePreferenceButtons();
+  syncLineToolState();
   if (persistChange) persist('loopLine', state.settings.loopLine);
   updatePlaybackUi(true);
 }
@@ -1175,6 +1229,29 @@ async function jumpLine(direction) {
   }
 }
 
+async function playLine(index) {
+  const line = state.lines[index];
+  if (!line) return;
+
+  if (state.activeLine === index) {
+    await controlPlayback(!isCurrentlyPlaying());
+    return;
+  }
+
+  if (state.popover.open) closePopover({ resume: false });
+  state.lookupSession = null;
+  clearFollowSuspension();
+  state.loop.index = state.settings.loopLine ? index : -1;
+
+  await seekTo(line.start);
+  await controlPlayback(true);
+}
+
+function toggleLineLoop(index) {
+  if (state.activeLine !== index) return;
+  setLoopEnabled(!state.settings.loopLine);
+}
+
 function maybePauseForLookup() {
   if (!state.settings.pauseOnLookup) return;
 
@@ -1515,18 +1592,27 @@ function onTranscriptClick(event) {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
+  const linePlay = target.closest('.line-play');
+  if (linePlay) {
+    event.preventDefault();
+    const lineIndex = Number(linePlay.dataset.lineIndex);
+    if (Number.isInteger(lineIndex)) playLine(lineIndex);
+    return;
+  }
+
+  const lineLoop = target.closest('.line-loop');
+  if (lineLoop) {
+    event.preventDefault();
+    const lineIndex = Number(lineLoop.dataset.lineIndex);
+    if (Number.isInteger(lineIndex)) toggleLineLoop(lineIndex);
+    return;
+  }
+
   const lineTranslate = target.closest('.line-translate');
   if (lineTranslate) {
     event.preventDefault();
     const lineIndex = Number(lineTranslate.dataset.lineIndex);
     if (Number.isInteger(lineIndex)) toggleLineTranslation(lineIndex);
-    return;
-  }
-
-  const timeButton = target.closest('.line-time');
-  if (timeButton) {
-    closePopover();
-    seekTo(Number(timeButton.dataset.time) || 0);
     return;
   }
 
@@ -1726,26 +1812,12 @@ function onStorageChanged(changes, area) {
     }
   }
 
-  if (changes.showTranslation) {
-    state.settings.showTranslation = changes.showTranslation.newValue !== false;
-    els.transcript.classList.toggle(
-      'hide-translation',
-      !state.settings.showTranslation
-    );
-    changed = true;
-  }
-
   if (changes.fontSize) {
     state.settings.fontSize = Math.min(
       28,
       Math.max(16, Number(changes.fontSize.newValue) || 20)
     );
     applySettingsToUi();
-    changed = true;
-  }
-
-  if (changes.pauseOnLookup) {
-    state.settings.pauseOnLookup = changes.pauseOnLookup.newValue === true;
     changed = true;
   }
 
@@ -1775,34 +1847,8 @@ function onStorageChanged(changes, area) {
 }
 
 function bindEvents() {
-  els.playButton.addEventListener('click', togglePlayPause);
-  els.prevLineButton.addEventListener('click', () => jumpLine(-1));
-  els.nextLineButton.addEventListener('click', () => jumpLine(1));
   els.rateSelect.addEventListener('change', () => {
     runCommand('rate', Number(els.rateSelect.value) || 1);
-  });
-
-  els.muteButton.addEventListener('click', async () => {
-    const nextMuted = !(state.light && state.light.muted);
-    if (state.light) state.light.muted = nextMuted;
-    updateControls(state.light);
-    await runCommand('mute', nextMuted, { silent: true });
-  });
-
-  els.showTranslation.addEventListener('click', () => {
-    state.settings.showTranslation = !state.settings.showTranslation;
-    els.transcript.classList.toggle(
-      'hide-translation',
-      !state.settings.showTranslation
-    );
-    updatePreferenceButtons();
-    persist('showTranslation', state.settings.showTranslation);
-  });
-
-  els.pauseOnLookup.addEventListener('click', () => {
-    state.settings.pauseOnLookup = !state.settings.pauseOnLookup;
-    updatePreferenceButtons();
-    persist('pauseOnLookup', state.settings.pauseOnLookup);
   });
 
   els.followAudio.addEventListener('click', () => {
@@ -1812,10 +1858,6 @@ function bindEvents() {
     updatePreferenceButtons();
     persist('followAudio', state.follow);
     if (state.follow) scrollToActive(true);
-  });
-
-  els.loopLine.addEventListener('click', () => {
-    setLoopEnabled(!state.settings.loopLine);
   });
 
   els.retryButton.addEventListener('click', retryReader);
