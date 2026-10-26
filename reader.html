@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>legrendas — Modo leitura</title>
+    <link rel="icon" href="icons/icon48.png" />
+    <link rel="stylesheet" href="reader.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="video-heading">
+          <div class="brand-row">
+            <span class="brand">legrendas</span>
+            <span class="badge">Modo leitura</span>
+          </div>
+          <h1 id="videoTitle">A ligar ao vídeo…</h1>
+          <p id="videoMeta" class="video-meta"></p>
+        </div>
+        <div class="top-actions">
+          <span id="connection" class="connection" role="status">A ligar…</span>
+          <button id="fullscreenButton" class="text-button" type="button">
+            Ecrã inteiro
+          </button>
+          <button id="closeButton" class="icon-button" type="button" aria-label="Fechar modo leitura" title="Fechar">
+            ×
+          </button>
+        </div>
+      </header>
+
+      <div id="statusBar" class="status-bar" role="status" hidden></div>
+
+      <main id="scrollArea" class="transcript-scroll">
+        <div class="transcript-wrap">
+          <section id="emptyState" class="empty-state">
+            <div class="empty-mark" aria-hidden="true">Aa</div>
+            <h2>A preparar a transcrição</h2>
+            <p id="emptyText">Aguarda enquanto as legendas do vídeo são carregadas.</p>
+            <button id="retryButton" class="primary-button" type="button">
+              Tentar novamente
+            </button>
+          </section>
+
+          <section id="transcript" class="transcript" aria-label="Transcrição do vídeo"></section>
+          <div class="bottom-spacer" aria-hidden="true"></div>
+        </div>
+      </main>
+
+      <footer class="controlbar">
+        <div class="control-group transport">
+          <button id="playButton" class="round-button" type="button" aria-label="Reproduzir" title="Reproduzir">
+            ▶
+          </button>
+          <button id="backButton" class="small-button" type="button" aria-label="Recuar 5 segundos" title="Recuar 5 segundos">
+            −5s
+          </button>
+          <button id="forwardButton" class="small-button" type="button" aria-label="Avançar 5 segundos" title="Avançar 5 segundos">
+            +5s
+          </button>
+          <span id="timeDisplay" class="time-display">00:00 / 00:00</span>
+        </div>
+
+        <div class="control-group navigation">
+          <button id="prevLineButton" class="small-button" type="button" aria-label="Linha anterior" title="Linha anterior">
+            Linha −
+          </button>
+          <button id="nextLineButton" class="small-button" type="button" aria-label="Linha seguinte" title="Linha seguinte">
+            Linha +
+          </button>
+          <label class="select-wrap">
+            <span class="sr-only">Velocidade</span>
+            <select id="rateSelect" aria-label="Velocidade de reprodução">
+              <option value="0.75">0,75×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.25">1,25×</option>
+              <option value="1.5">1,5×</option>
+            </select>
+          </label>
+          <button id="muteButton" class="small-button" type="button" aria-label="Silenciar" title="Silenciar">
+            Som
+          </button>
+        </div>
+
+        <div class="control-group preferences">
+          <label class="toggle">
+            <input id="showTranslation" type="checkbox" />
+            <span>Tradução</span>
+          </label>
+          <label class="toggle">
+            <input id="pauseOnLookup" type="checkbox" />
+            <span>Pausar ao traduzir</span>
+          </label>
+          <label class="toggle">
+            <input id="followAudio" type="checkbox" checked />
+            <span>Seguir áudio</span>
+          </label>
+        </div>
+      </footer>
+    </div>
+
+    <div id="wordPopover" class="word-popover" role="dialog" aria-label="Tradução da palavra" hidden>
+      <div class="popover-head">
+        <strong id="popWord"></strong>
+        <button id="popClose" class="pop-close" type="button" aria-label="Fechar tradução">×</button>
+      </div>
+      <p id="popTranslation" class="pop-translation" aria-live="polite">A traduzir…</p>
+      <p id="popContext" class="pop-context"></p>
+      <div class="pop-actions">
+        <button id="popRepeat" class="small-button" type="button">Repetir frase</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <script src="reader.js"></script>
+  </body>
+</html>

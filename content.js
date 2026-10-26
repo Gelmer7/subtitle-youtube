@@ -16,6 +16,7 @@
     :host { display: block; }
     *, *::before, *::after { box-sizing: border-box; }
     .dock {
+      position: relative;
       width: 100%;
       min-height: 76px;
       padding: 12px 24px;
@@ -45,6 +46,31 @@
       color: #c9c9c9;
     }
     .row[data-empty="true"] { visibility: hidden; }
+    .reader-launch {
+      position: absolute;
+      top: 5px;
+      right: 8px;
+      margin: 0;
+      padding: 3px 7px;
+      border: 1px solid #333;
+      border-radius: 5px;
+      background: #181818;
+      color: #bdbdbd;
+      font: 600 10px/1.3 Roboto, Arial, sans-serif;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      cursor: pointer;
+      opacity: 0.3;
+      transition: opacity 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+    }
+    .reader-launch:hover,
+    .reader-launch:focus-visible {
+      opacity: 1;
+      color: #fff;
+      border-color: #666;
+      outline: none;
+    }
+    :host(.legrendas-fs-host) .reader-launch { display: none; }
     :host(.legrendas-fs-host) .dock {
       height: 100%;
       min-height: 0;
@@ -88,6 +114,11 @@
     lastMessage: null,
     messageCount: 0,
     emptyRetries: 0,
+    readerActive: false,
+    readerRevision: 0,
+    readerLines: [],
+    audioMode: false,
+    readerOverlay: null,
   };
 
   let loadSeq = 0;
@@ -97,6 +128,91 @@
 
   function cleanText(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function wordQuery(value) {
+    return String(value || '')
+      .replace(/^[^\p{L}\p{N}]+/u, '')
+      .replace(/[^\p{L}\p{N}]+$/u, '');
+  }
+
+  function makeWordTimings(text, start, end) {
+    const clean = cleanText(text);
+    if (!clean) return [];
+
+    const tokens = clean.match(/\S+/g) || [];
+    if (!tokens.length) return [];
+
+    const safeStart = Number.isFinite(start) ? Math.max(0, start) : 0;
+    let safeEnd = Number.isFinite(end) ? end : safeStart + Math.max(0.8, tokens.length * 0.3);
+    if (safeEnd <= safeStart) safeEnd = safeStart + Math.max(0.8, tokens.length * 0.3);
+
+    const totalWeight = tokens.reduce((sum, token) => sum + Math.max(1, token.length), 0);
+    let cursor = safeStart;
+
+    return tokens.map((token, index) => {
+      const share = Math.max(1, token.length) / totalWeight;
+      const wordStart = cursor;
+      let wordEnd = index === tokens.length - 1
+        ? safeEnd
+        : Math.min(safeEnd, wordStart + (safeEnd - safeStart) * share);
+
+      if (wordEnd <= wordStart) wordEnd = Math.min(safeEnd, wordStart + 0.06);
+      cursor = wordEnd;
+
+      return {
+        text: token,
+        query: wordQuery(token),
+        start: wordStart,
+        end: Math.max(wordEnd, wordStart + 0.06),
+      };
+    });
+  }
+
+  function makeWordsFromSegments(segments, start, end) {
+    const parts = (Array.isArray(segments) ? segments : [])
+      .map((segment) => ({
+        text: cleanText(segment && segment.utf8),
+        offset: Number(segment && segment.tOffsetMs),
+      }))
+      .filter((part) => part.text);
+
+    if (!parts.length) return makeWordTimings('', start, end);
+
+    const offsets = parts
+      .filter((part) => Number.isFinite(part.offset))
+      .map((part) => part.offset);
+    const hasDistinctOffsets = new Set(offsets).size > 1;
+
+    if (!hasDistinctOffsets) {
+      return makeWordTimings(parts.map((part) => part.text).join(' '), start, end);
+    }
+
+    const starts = [];
+    let previousStart = start;
+
+    parts.forEach((part) => {
+      let partStart = Number.isFinite(part.offset)
+        ? Math.max(start, start + part.offset / 1000)
+        : previousStart;
+      partStart = Math.min(partStart, end);
+      starts.push(partStart);
+      previousStart = partStart;
+    });
+
+    const words = [];
+    parts.forEach((part, index) => {
+      const nextStart = starts[index + 1];
+      let partEnd = Number.isFinite(nextStart) && nextStart > starts[index]
+        ? nextStart
+        : end;
+      if (partEnd <= starts[index]) partEnd = Math.min(end, starts[index] + 0.6);
+      if (partEnd <= starts[index]) partEnd = starts[index] + 0.6;
+      words.push(...makeWordTimings(part.text, starts[index], partEnd));
+    });
+
+    words.sort((a, b) => a.start - b.start);
+    return words;
   }
 
   function getVideoId() {
@@ -208,6 +324,31 @@
     );
   }
 
+  function createReaderLaunchButton() {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'reader-launch';
+    button.textContent = 'Texto';
+    button.title = 'Abrir modo leitura';
+    button.setAttribute('aria-label', 'Abrir modo leitura');
+    button.addEventListener('click', () => {
+      try {
+        chrome.runtime.sendMessage(
+          { type: 'legrendas:open-reader' },
+          (response) => {
+            if (chrome.runtime.lastError || !response || !response.ok) {
+              button.title =
+                (response && response.error) || 'Não foi possível abrir o modo leitura';
+            }
+          }
+        );
+      } catch {
+        // The extension may have been reloaded.
+      }
+    });
+    return button;
+  }
+
   function createDock() {
     if (state.host && state.rows.original) return state.host;
 
@@ -233,7 +374,7 @@
       translation.className = 'row row--translation';
       translation.dataset.empty = 'true';
 
-      dock.append(original, translation);
+      dock.append(original, translation, createReaderLaunchButton());
       shadow.append(style, dock);
 
       state.shadow = shadow;
@@ -243,6 +384,10 @@
       state.shadow = host.shadowRoot;
       state.rows.original = host.shadowRoot.querySelector('.row--original');
       state.rows.translation = host.shadowRoot.querySelector('.row--translation');
+      if (!host.shadowRoot.querySelector('.reader-launch')) {
+        const dock = host.shadowRoot.querySelector('.dock');
+        if (dock) dock.append(createReaderLaunchButton());
+      }
     }
 
     state.host = host;
@@ -284,6 +429,7 @@
   function unmountDock() {
     stopSync();
     stopFallback();
+    exitAudioMode();
     if (state.abort) {
       state.abort.abort();
       state.abort = null;
@@ -477,10 +623,13 @@
       if (seen.has(key)) continue;
       seen.add(key);
 
+      const start = startMs / 1000;
+      const end = (startMs + durationMs) / 1000;
       cues.push({
-        start: startMs / 1000,
-        end: (startMs + durationMs) / 1000,
+        start,
+        end,
         text,
+        words: makeWordsFromSegments(event.segs, start, end),
       });
     }
 
@@ -495,10 +644,12 @@
         .map((node) => {
           const start = Number(node.getAttribute('start')) || 0;
           const duration = Number(node.getAttribute('dur')) || 2.5;
+          const text = cleanText(node.textContent);
           return {
             start,
             end: start + duration,
-            text: cleanText(node.textContent),
+            text,
+            words: makeWordTimings(text, start, start + duration),
           };
         })
         .filter((cue) => cue.text);
@@ -542,6 +693,276 @@
     }
 
     return null;
+  }
+
+  function buildReaderLines() {
+    const cues = state.originalCues || [];
+    const translations = state.translationByCue || [];
+    const lines = [];
+
+    for (let i = 0; i < cues.length; i += 1) {
+      const cue = cues[i];
+      if (!cue || !cue.text) continue;
+
+      const cueWords = Array.isArray(cue.words) && cue.words.length
+        ? cue.words
+        : makeWordTimings(cue.text, cue.start, cue.end);
+      const translation = cleanText(translations[i] || '');
+      const previous = lines.length ? lines[lines.length - 1] : null;
+
+      if (previous) {
+        const gap = cue.start - previous.end;
+        const joinedLength = previous.text.length + 1 + cue.text.length;
+        const previousEndsSentence = /[.!?…]["')\]]?\s*$/.test(previous.text);
+        const previousDuration = previous.end - previous.start;
+
+        if (
+          gap <= 0.9 &&
+          joinedLength <= 200 &&
+          previousDuration <= 14 &&
+          !previousEndsSentence
+        ) {
+          previous.text = cleanText(`${previous.text} ${cue.text}`);
+          previous.end = Math.max(previous.end, cue.end);
+          previous.words.push(...cueWords);
+          if (translation) {
+            previous.translation = cleanText(
+              `${previous.translation} ${translation}`
+            );
+          }
+          continue;
+        }
+      }
+
+      lines.push({
+        start: cue.start,
+        end: cue.end,
+        text: cue.text,
+        translation,
+        words: cueWords.slice(),
+      });
+    }
+
+    lines.forEach((line) => line.words.sort((a, b) => a.start - b.start));
+    return lines.map((line, index) => ({ ...line, id: index }));
+  }
+
+  function refreshReaderLines() {
+    state.readerLines = buildReaderLines();
+    state.readerRevision += 1;
+  }
+
+  function getVideoTitle() {
+    const title =
+      cleanText(
+        (document.querySelector('h1.ytd-watch-metadata yt-formatted-string') || {})
+          .textContent
+      ) ||
+      cleanText(
+        (document.querySelector('#title h1 yt-formatted-string') || {}).textContent
+      ) ||
+      cleanText(
+        (document.querySelector('#above-the-fold #title') || {}).textContent
+      ) ||
+      cleanText(document.title.replace(/\s*-\s*YouTube\s*$/i, ''));
+
+    return title || 'Vídeo do YouTube';
+  }
+
+  function getChannelName() {
+    return cleanText(
+      (document.querySelector('#owner #channel-name a') || {}).textContent ||
+      (document.querySelector('ytd-channel-name a') || {}).textContent ||
+      ''
+    );
+  }
+
+  function getReaderLightState() {
+    const video = getVideo();
+    const duration = video && Number.isFinite(video.duration) ? video.duration : 0;
+    const currentTime = video && Number.isFinite(video.currentTime) ? video.currentTime : 0;
+
+    return {
+      ok: true,
+      videoId: state.videoId,
+      title: getVideoTitle(),
+      channel: getChannelName(),
+      duration,
+      currentTime: Math.min(currentTime, Math.max(0, duration || currentTime)),
+      paused: video ? video.paused : true,
+      ended: video ? video.ended : false,
+      rate: video ? video.playbackRate : 1,
+      muted: video ? video.muted : false,
+      volume: video ? video.volume : 1,
+      ad: isAd(),
+      ready: state.ready,
+      loading: state.loading,
+      fallback: state.fallback,
+      warning: state.warning,
+      error: state.lastError,
+      revision: state.readerRevision,
+      lineCount: state.readerLines.length,
+      targetLang: state.settings.targetLang,
+      showTranslation: state.settings.showTranslation,
+      audioMode: state.audioMode,
+    };
+  }
+
+  function buildReaderState(full = false) {
+    const data = getReaderLightState();
+    if (full) data.lines = state.readerLines;
+    return data;
+  }
+
+  function applyLowestQuality() {
+    sendToPage('SET_QUALITY');
+  }
+
+  function restoreQuality() {
+    sendToPage('RESTORE_QUALITY');
+  }
+
+  function ensureReaderOverlay() {
+    const player = getPlayer();
+    if (!player) return null;
+
+    let overlay = document.getElementById('legrendas-reader-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'legrendas-reader-overlay';
+
+      const title = document.createElement('strong');
+      title.textContent = 'Modo leitura ativo';
+
+      const text = document.createElement('span');
+      text.textContent =
+        'O áudio continua nesta aba. A transcrição está na janela do leitor.';
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Sair do modo leitura';
+      button.addEventListener('click', () => {
+        setReaderActive(false);
+        try {
+          chrome.runtime.sendMessage({
+            type: 'legrendas:close-reader-for-tab',
+          });
+        } catch {
+          // The extension may have been reloaded.
+        }
+      });
+
+      overlay.append(title, text, button);
+    }
+
+    if (overlay.parentElement !== player) player.appendChild(overlay);
+    state.readerOverlay = overlay;
+    return overlay;
+  }
+
+  function syncReaderAudioVisuals() {
+    if (!state.readerActive) {
+      document.documentElement.classList.remove('legrendas-reader-audio');
+      if (state.readerOverlay) state.readerOverlay.hidden = true;
+      return;
+    }
+
+    const ad = isAd();
+    document.documentElement.classList.toggle('legrendas-reader-audio', !ad);
+
+    const overlay = ensureReaderOverlay();
+    if (overlay) overlay.hidden = ad;
+  }
+
+  function enterAudioMode() {
+    if (!state.audioMode) state.audioMode = true;
+    applyLowestQuality();
+    syncReaderAudioVisuals();
+  }
+
+  function exitAudioMode() {
+    state.audioMode = false;
+    document.documentElement.classList.remove('legrendas-reader-audio');
+    if (state.readerOverlay) state.readerOverlay.remove();
+    state.readerOverlay = null;
+    restoreQuality();
+  }
+
+  function setReaderActive(active) {
+    state.readerActive = !!active;
+    if (state.readerActive) enterAudioMode();
+    else exitAudioMode();
+    return buildReaderState(false);
+  }
+
+  async function handleReaderCommand(action, value) {
+    if (!state.settings.enabled) {
+      return { ok: false, error: 'disabled' };
+    }
+    if (!isWatchPage()) {
+      return { ok: false, error: 'not-watch' };
+    }
+
+    const video = getVideo();
+    if (!video) return { ok: false, error: 'sem-video' };
+
+    try {
+      switch (action) {
+        case 'play':
+          if (video.ended) video.currentTime = 0;
+          await video.play();
+          break;
+        case 'pause':
+          video.pause();
+          break;
+        case 'toggle':
+          if (video.paused) {
+            if (video.ended) video.currentTime = 0;
+            await video.play();
+          } else {
+            video.pause();
+          }
+          break;
+        case 'seek': {
+          const target = Math.max(0, Number(value) || 0);
+          video.currentTime = Math.min(target, video.duration || target);
+          break;
+        }
+        case 'seek-by': {
+          const delta = Number(value) || 0;
+          const target = Math.max(0, video.currentTime + delta);
+          video.currentTime = Math.min(target, video.duration || target);
+          break;
+        }
+        case 'rate': {
+          const rate = Math.min(2, Math.max(0.5, Number(value) || 1));
+          video.playbackRate = rate;
+          break;
+        }
+        case 'mute':
+          video.muted = typeof value === 'boolean' ? value : !video.muted;
+          break;
+        case 'retry':
+          state.lastError = '';
+          state.emptyRetries = 0;
+          state.loading = false;
+          stopFallback();
+          requestCaptions();
+          initVideo(0);
+          break;
+        default:
+          return { ok: false, error: 'comando-desconhecido' };
+      }
+
+      syncOnce(true);
+      if (state.readerActive) syncReaderAudioVisuals();
+      return getReaderLightState();
+    } catch (error) {
+      return {
+        ok: false,
+        error: error && error.name === 'NotAllowedError' ? 'play-blocked' : String(error),
+      };
+    }
   }
 
   function setParam(rawUrl, key, value) {
@@ -742,6 +1163,7 @@
     state.ready = true;
     state.loading = false;
     state.fallback = false;
+    refreshReaderLines();
     stopFallback();
     startSync();
     syncOnce(true);
@@ -781,6 +1203,7 @@
       ? alignTranslation(original, translated)
       : original.map(() => '');
     state.currentIndex = -1;
+    refreshReaderLines();
     syncOnce(true);
     debug({ translationReady: translated.length });
   }
@@ -904,6 +1327,7 @@
           ? alignTranslation(state.originalCues, translated)
           : state.originalCues.map(() => '');
         state.currentIndex = -1;
+        refreshReaderLines();
         syncOnce(true);
       })
       .catch(() => {});
@@ -1104,6 +1528,8 @@
     state.originalCues = [];
     state.translationCues = [];
     state.translationByCue = [];
+    state.readerLines = [];
+    state.readerRevision += 1;
     state.currentIndex = -1;
     state.captured = [];
     state.capturedBodies.clear();
@@ -1144,6 +1570,7 @@
     observePlayer();
     sendToPage('GET');
     ensureCC();
+    if (state.readerActive) enterAudioMode();
     debug({ init: true, attempt });
 
     clearTimeout(state.retryTimer);
@@ -1208,6 +1635,16 @@
 
   function applySettings(previous = {}) {
     if (!state.settings.enabled) {
+      if (state.readerActive) {
+        try {
+          chrome.runtime.sendMessage({
+            type: 'legrendas:close-reader-for-tab',
+          });
+        } catch {
+          // ignore
+        }
+        setReaderActive(false);
+      }
       unmountDock();
       return;
     }
@@ -1237,6 +1674,7 @@
       if (state.ready) {
         state.translationByCue = state.originalCues.map(() => '');
         state.currentIndex = -1;
+        refreshReaderLines();
         syncOnce(true);
         if (state.settings.showTranslation) ensureTranslation();
       } else if (state.loading) {
@@ -1336,6 +1774,56 @@
     }
   });
 
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || typeof message.type !== 'string') return undefined;
+    if (!message.type.startsWith('legrendas:')) return undefined;
+
+    if (message.type === 'legrendas:reader-active') {
+      if (!state.settings.enabled || !isWatchPage()) {
+        sendResponse({ ok: false, error: 'indisponivel' });
+        return false;
+      }
+      setReaderActive(true);
+      syncReaderAudioVisuals();
+      sendResponse({ ok: true, state: buildReaderState(false) });
+      return false;
+    }
+
+    if (message.type === 'legrendas:reader-closed') {
+      setReaderActive(false);
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    if (message.type === 'legrendas:reader-state') {
+      if (!state.settings.enabled) {
+        sendResponse({ ok: false, error: 'disabled' });
+        return false;
+      }
+      if (!isWatchPage()) {
+        sendResponse({ ok: false, error: 'not-watch' });
+        return false;
+      }
+      if (message.reader && !state.readerActive) setReaderActive(true);
+      syncReaderAudioVisuals();
+      sendResponse(buildReaderState(!!message.full));
+      return false;
+    }
+
+    if (message.type === 'legrendas:reader-command') {
+      if (message.reader && !state.readerActive && state.settings.enabled && isWatchPage()) {
+        setReaderActive(true);
+      }
+      handleReaderCommand(message.action, message.value).then(
+        (result) => sendResponse(result),
+        (error) => sendResponse({ ok: false, error: String(error) })
+      );
+      return true;
+    }
+
+    return undefined;
+  });
+
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync') return;
     const previous = { ...state.settings };
@@ -1392,6 +1880,10 @@
     const ad = isAd();
     if (wasAd && !ad) {
       wasAd = false;
+      if (state.readerActive) {
+        applyLowestQuality();
+        syncReaderAudioVisuals();
+      }
       setTimeout(() => {
         if (!state.settings.enabled || !isWatchPage() || state.ready) return;
         stopFallback();
@@ -1403,10 +1895,23 @@
       return;
     }
     wasAd = ad;
+    if (state.readerActive && ad) syncReaderAudioVisuals();
   }, 500);
 
   loadSettings().then(() => {
     state.lastHref = location.href;
-    if (state.settings.enabled) onNavigate();
+    if (state.settings.enabled) {
+      onNavigate();
+    } else {
+      setReaderActive(false);
+      unmountDock();
+      try {
+        chrome.runtime.sendMessage({
+          type: 'legrendas:close-reader-for-tab',
+        });
+      } catch {
+        // ignore
+      }
+    }
   });
 })();

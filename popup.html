@@ -24,6 +24,16 @@
         <span class="preview-translation">Esta é a linha em português.</span>
       </section>
 
+      <section class="reader-card">
+        <div class="reader-info">
+          <strong>Modo leitura</strong>
+          <span id="readerStatus">Abre uma janela só com o texto e o áudio do vídeo.</span>
+        </div>
+        <button id="openReader" class="reader-button" type="button" disabled>
+          Abrir janela
+        </button>
+      </section>
+
       <section class="fields">
         <label class="field">
           <span class="label">Tradução</span>
@@ -56,8 +66,10 @@
       </section>
 
       <p class="hint">
-        Abre um vídeo com legendas (CC). A extensão liga o CC sozinha e esconde
-        as legendas nativas.
+        Abre um vídeo com legendas (CC). O modo leitura mostra a transcrição
+        completa e clica-se nas palavras para ver a tradução. O vídeo fica
+        oculto em qualidade baixa, mas o áudio continua; mantém a aba do YouTube
+        aberta.
       </p>
     </main>
 

@@ -17,8 +17,115 @@ const fontSizeOut = $('fontSizeOut');
 const fullscreen = $('fullscreen');
 const previewOriginal = document.querySelector('.preview-original');
 const previewTranslation = document.querySelector('.preview-translation');
+const readerButton = $('openReader');
+const readerStatus = $('readerStatus');
 
 let saveTimer = 0;
+let readerTabId = null;
+let readerBusy = false;
+
+function setReaderStatus(text, isError = false) {
+  if (!readerStatus) return;
+  readerStatus.textContent = text;
+  readerStatus.dataset.error = isError ? 'true' : 'false';
+}
+
+function getActiveTab() {
+  return new Promise((resolve) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) {
+        resolve(null);
+        return;
+      }
+      resolve(tabs && tabs[0] ? tabs[0] : null);
+    });
+  });
+}
+
+function isWatchUrl(url) {
+  return (
+    typeof url === 'string' &&
+    /^https:\/\/www\.youtube\.com\/(watch|live)([/?#]|$)/.test(url)
+  );
+}
+
+async function refreshReaderAvailability() {
+  if (!readerButton) return;
+
+  readerTabId = null;
+
+  if (!enabled.checked) {
+    readerButton.disabled = true;
+    setReaderStatus('Ativa a extensão primeiro.');
+    return;
+  }
+
+  const tab = await getActiveTab();
+  if (!tab || !tab.id) {
+    readerButton.disabled = true;
+    setReaderStatus('Não foi possível identificar a aba ativa.');
+    return;
+  }
+
+  // Host permission normally exposes the YouTube URL. If the browser hides
+  // the URL, let the background validate the tab instead of blocking the UI.
+  if (typeof tab.url === 'string' && tab.url && !isWatchUrl(tab.url)) {
+    readerButton.disabled = true;
+    readerTabId = null;
+    setReaderStatus('Abre um vídeo do YouTube com legendas.');
+    return;
+  }
+
+  readerTabId = tab.id;
+  readerButton.disabled = false;
+  setReaderStatus('Abre uma janela só com o texto e o áudio do vídeo.');
+}
+
+function openReaderWindow() {
+  if (readerBusy || !readerTabId) return;
+
+  readerBusy = true;
+  readerButton.disabled = true;
+  setReaderStatus('A abrir a janela do leitor…');
+
+  try {
+    chrome.runtime.sendMessage(
+      { type: 'legrendas:open-reader', tabId: readerTabId },
+      (response) => {
+        readerBusy = false;
+
+        if (chrome.runtime.lastError) {
+          setReaderStatus(
+            chrome.runtime.lastError.message || 'Não foi possível abrir a janela.',
+            true
+          );
+          readerButton.disabled = false;
+          return;
+        }
+
+        if (!response || !response.ok) {
+          setReaderStatus(
+            (response && response.error) || 'Não foi possível abrir a janela.',
+            true
+          );
+          readerButton.disabled = false;
+          return;
+        }
+
+        setReaderStatus(
+          response.existing
+            ? 'A janela do leitor já estava aberta.'
+            : 'Janela aberta. Podes minimizar esta aba; o áudio continua.'
+        );
+        setTimeout(() => window.close(), 550);
+      }
+    );
+  } catch (error) {
+    readerBusy = false;
+    setReaderStatus(String(error), true);
+    readerButton.disabled = false;
+  }
+}
 
 function renderPreview() {
   const size = Number(fontSize.value) || 20;
@@ -65,7 +172,10 @@ async function load() {
   renderPreview();
 }
 
-enabled.addEventListener('change', save);
+enabled.addEventListener('change', () => {
+  save();
+  refreshReaderAvailability();
+});
 targetLang.addEventListener('change', () => {
   renderPreview();
   save();
@@ -77,5 +187,6 @@ fontSize.addEventListener('input', () => {
   scheduleSave();
 });
 fontSize.addEventListener('change', save);
+readerButton.addEventListener('click', openReaderWindow);
 
-load();
+load().then(refreshReaderAvailability);

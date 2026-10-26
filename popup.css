@@ -73,6 +73,67 @@ h1 {
   color: #c9c9c9;
 }
 
+.reader-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.reader-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.reader-info strong {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.reader-info span {
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.reader-button {
+  flex: none;
+  padding: 6px 9px;
+  border: 1px solid #3b3b3b;
+  border-radius: 7px;
+  background: #262626;
+  color: var(--text);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reader-button:hover:not(:disabled) {
+  border-color: #5a5a5a;
+  background: #303030;
+}
+
+.reader-button:disabled {
+  color: #6c6c6c;
+  cursor: default;
+}
+
+.reader-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.reader-info span[data-error="true"] {
+  color: #f0a0a0;
+}
+
 .fields {
   display: flex;
   flex-direction: column;
