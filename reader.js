@@ -908,7 +908,7 @@ function scrollToActive(force = false) {
 
   const target = Math.max(
     0,
-    relativeTop - els.scrollArea.clientHeight * 0.36
+    relativeTop - els.scrollArea.clientHeight * 0.09
   );
 
   const distance = Math.abs(target - els.scrollArea.scrollTop);

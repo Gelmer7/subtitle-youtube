@@ -262,7 +262,6 @@ select:focus-visible {
 
 .line-loop,
 .line-translate {
-  display: none;
   place-items: center;
   flex: 0 0 auto;
   width: 27px;
@@ -277,9 +276,15 @@ select:focus-visible {
     transform 0.1s ease;
 }
 
-.line.is-active .line-loop,
-.line.is-active .line-translate,
-.line.is-translation-open .line-translate {
+.line-loop {
+  display: none;
+}
+
+.line-translate {
+  display: grid;
+}
+
+.line.is-active .line-loop {
   display: grid;
 }
 
