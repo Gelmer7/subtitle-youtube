@@ -13,8 +13,6 @@ const READER_PREFS_VERSION = 2;
 const LOOP_LEAD = 0.06;
 
 const els = {
-  videoTitle: document.getElementById('videoTitle'),
-  videoMeta: document.getElementById('videoMeta'),
   statusBar: document.getElementById('statusBar'),
   scrollArea: document.getElementById('scrollArea'),
   transcript: document.getElementById('transcript'),
@@ -23,6 +21,7 @@ const els = {
   retryButton: document.getElementById('retryButton'),
   timeCurrent: document.getElementById('timeCurrent'),
   timeTotal: document.getElementById('timeTotal'),
+  seekBack: document.getElementById('seekBack'),
   rateSelect: document.getElementById('rateSelect'),
   reloadYouTube: document.getElementById('reloadYouTube'),
   followAudio: document.getElementById('followAudio'),
@@ -405,19 +404,10 @@ function updateTimeDisplay(force = false) {
   els.timeTotal.textContent = formatTime(duration);
 }
 
-function updateHeader(data) {
+function updateDocumentTitle(data) {
   const title = data.title || 'Vídeo do YouTube';
-  if (els.videoTitle.textContent !== title) els.videoTitle.textContent = title;
-  document.title = `${title} — SubIngles`;
-
-  const parts = [];
-  if (data.channel) parts.push(data.channel);
-  if (data.lineCount) {
-    parts.push(`${data.lineCount} ${data.lineCount === 1 ? 'linha' : 'linhas'}`);
-  }
-  const meta = parts.join('  ·  ');
-  if (els.videoMeta.textContent !== meta) els.videoMeta.textContent = meta;
-  els.videoMeta.hidden = !meta;
+  const next = `${title} — SubIngles`;
+  if (document.title !== next) document.title = next;
 }
 
 function updateStatus(data) {
@@ -982,7 +972,7 @@ function applyPlayback(data) {
     }
   }
 
-  updateHeader(data);
+  updateDocumentTitle(data);
   updateControls(data);
   updateStatus(data);
   updateEmptyState(data);
@@ -1931,6 +1921,10 @@ function onStorageChanged(changes, area) {
 }
 
 function bindEvents() {
+  els.seekBack.addEventListener('click', () => {
+    seekBy(-5);
+  });
+
   els.rateSelect.addEventListener('change', () => {
     runCommand('rate', Number(els.rateSelect.value) || 1);
   });

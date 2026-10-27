@@ -72,7 +72,7 @@ async function refreshReaderAvailability() {
 
   readerTabId = tab.id;
   readerButton.disabled = false;
-  setReaderStatus('Abre uma janela só com o texto e o áudio do vídeo.');
+  setReaderStatus('Abre uma janela com a transcrição; o vídeo continua no YouTube.');
 }
 
 function openReaderWindow() {

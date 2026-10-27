@@ -1,6 +1,6 @@
 # SubIngles
 
-Leitor de transcrições do YouTube numa janela separada, com o áudio do vídeo e tradução de palavras e linhas. A extensão já não mostra legendas por baixo do vídeo: todo o texto aparece na janela do leitor.
+Leitor de transcrições do YouTube numa janela separada, com tradução de palavras e linhas. O vídeo continua visível e a extensão já não mostra legendas por baixo dele: todo o texto aparece na janela do leitor.
 
 ## Instalar
 
@@ -14,7 +14,7 @@ Leitor de transcrições do YouTube numa janela separada, com o áudio do vídeo
 2. Clica no ícone da extensão.
 3. Clica em **Abrir janela**.
 
-A janela do leitor fica ligada à aba do YouTube. Podes minimizar a aba; o áudio continua. Mantém a aba aberta enquanto usas o leitor.
+A janela do leitor fica ligada à aba do YouTube. Podes pôr as duas janelas lado a lado para ver o vídeo e a transcrição em paralelo; se minimizares a aba, o áudio continua. Mantém a aba aberta enquanto usas o leitor.
 
 ## Janela do leitor
 
@@ -25,7 +25,7 @@ A janela do leitor fica ligada à aba do YouTube. Podes minimizar a aba; o áudi
 - O botão de tradução aparece em todas as linhas e abre/fecha a tradução completa dessa linha.
 - Passar o rato numa palavra mostra a tradução; clicar fixa o popover com contexto e **Repetir frase**.
 - O áudio pausa ao abrir uma tradução e retoma ao fechar, se estava a tocar.
-- Controlos: velocidade, seguir áudio, tempo atual/total e **Recarregar YouTube**.
+- Controlos: retroceder 5 s, velocidade, seguir áudio, tempo atual/total e **Recarregar YouTube**.
 - **Recarregar YouTube** recarrega a aba do YouTube e volta a ligar o leitor automaticamente.
 
 ### Atalhos
@@ -42,14 +42,14 @@ A janela do leitor fica ligada à aba do YouTube. Podes minimizar a aba; o áudi
 2. `content.js` escolhe a faixa inglesa, descarrega as cues em `json3` e mantém o estado que a janela do leitor consome. Já não cria a barra por baixo do vídeo.
 3. `background.js` abre `reader.html`, faz a ponte de mensagens com a aba do YouTube e serve o fallback de tradução.
 4. O leitor pede o estado ao content script, desenha a transcrição e envia comandos de play, pause, seek, velocidade e mute para o player.
-5. Enquanto o leitor está aberto, a imagem do player é escondida e a qualidade é baixada. O CC nativo fica escondido enquanto a extensão está ativa. Ao fechar, a imagem e a qualidade são restauradas.
+5. O vídeo continua visível e a qualidade não é alterada. O CC nativo fica escondido enquanto a extensão está ativa para não duplicar o texto do leitor.
 6. A tradução é pedida à medida das necessidades: palavras no popover e linhas no botão de tradução.
 
 ## Limitações
 
-- **Não existe áudio-only real.** O YouTube entrega áudio e vídeo no mesmo player; a imagem é escondida, mas o vídeo pode continuar a ser descodificado.
+- **Não há modo apenas-áudio.** O vídeo continua visível e a ser descodificado; a extensão só controla a transcrição e a reprodução.
 - A aba do YouTube tem de ficar **aberta**.
-- Durante um anúncio, a imagem volta a aparecer para poderes saltar; a transcrição retoma depois.
+- Durante um anúncio, o leitor fica em espera; a transcrição retoma depois.
 - Só funciona em `youtube.com/watch` e `/live/` no desktop (Chrome/Edge 111+).
 - Vídeos sem faixa de legendas (nem automática) não têm o que mostrar.
 - O erro `play-blocked` é uma política de autoplay do Chrome; pode ser preciso clicar no play da aba do YouTube.
@@ -69,8 +69,8 @@ A janela do leitor fica ligada à aba do YouTube. Podes minimizar a aba; o áudi
 ```text
 manifest.json
 inject.js        # captura de timedtext (mundo MAIN)
-content.js       # cues, palavras, modo áudio e API do leitor
-content.css      # esconde CC nativo e imagem durante o modo leitura
+content.js       # cues, palavras e API do leitor
+content.css      # esconde o CC nativo enquanto a extensão está ativa
 background.js    # janela do leitor, mensagens e tradução
 reader.html      # janela do modo leitura
 reader.css

@@ -14,21 +14,6 @@
   let postTimer = 0;
   const log = [];
   const bodies = new Map();
-  const QUALITY_ORDER = [
-    'highres',
-    'hd2880',
-    'hd2160',
-    'hd1440',
-    'hd1080',
-    'hd720',
-    'large',
-    'medium',
-    'small',
-    'tiny',
-  ];
-  let savedQuality = null;
-  let qualityActive = false;
-  let qualityTimer = 0;
 
   function currentVideoId() {
     try {
@@ -221,89 +206,6 @@
     }
   }
 
-  function lowestAvailableQuality(player) {
-    const levels =
-      player && typeof player.getAvailableQualityLevels === 'function'
-        ? player.getAvailableQualityLevels() || []
-        : [];
-    let lowest = levels[levels.length - 1] || 'tiny';
-
-    for (const level of levels) {
-      if (QUALITY_ORDER.indexOf(level) > QUALITY_ORDER.indexOf(lowest)) {
-        lowest = level;
-      }
-    }
-    return lowest;
-  }
-
-  function setPlaybackQuality(player, quality) {
-    try {
-      if (typeof player.setPlaybackQualityRange === 'function') {
-        player.setPlaybackQualityRange(quality, quality);
-      }
-      if (typeof player.setPlaybackQuality === 'function') {
-        player.setPlaybackQuality(quality);
-      }
-    } catch {
-      // The audio must keep playing even if quality control is unavailable.
-    }
-  }
-
-  function applyLowestQuality() {
-    const player = document.getElementById('movie_player');
-    if (!player) return;
-
-    if (!qualityActive) {
-      qualityActive = true;
-      savedQuality =
-        typeof player.getPlaybackQuality === 'function'
-          ? player.getPlaybackQuality()
-          : null;
-    }
-
-    const lowest = lowestAvailableQuality(player);
-    setPlaybackQuality(player, lowest);
-
-    clearTimeout(qualityTimer);
-    let attempts = 0;
-
-    const retry = () => {
-      if (!qualityActive) return;
-      const currentPlayer = document.getElementById('movie_player');
-      if (!currentPlayer) return;
-
-      const current =
-        typeof currentPlayer.getPlaybackQuality === 'function'
-          ? currentPlayer.getPlaybackQuality()
-          : null;
-
-      if (current === lowest || attempts >= 6) return;
-      attempts += 1;
-      setPlaybackQuality(currentPlayer, lowest);
-      qualityTimer = setTimeout(retry, 1200);
-    };
-
-    const current =
-      typeof player.getPlaybackQuality === 'function'
-        ? player.getPlaybackQuality()
-        : null;
-
-    if (current !== lowest) qualityTimer = setTimeout(retry, 1000);
-  }
-
-  function restoreQuality() {
-    qualityActive = false;
-    clearTimeout(qualityTimer);
-    qualityTimer = 0;
-
-    const player = document.getElementById('movie_player');
-    const quality = savedQuality;
-    savedQuality = null;
-
-    if (!player || !quality) return;
-    setPlaybackQuality(player, quality);
-  }
-
   function reset() {
     state.videoId = currentVideoId();
     state.urls = [];
@@ -413,12 +315,6 @@
         break;
       case 'FORCE_EN':
         forceEnglish();
-        break;
-      case 'SET_QUALITY':
-        applyLowestQuality();
-        break;
-      case 'RESTORE_QUALITY':
-        restoreQuality();
         break;
       case 'RESET':
         reset();

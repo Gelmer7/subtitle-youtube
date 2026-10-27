@@ -59,41 +59,6 @@ button {
   background: var(--panel);
 }
 
-.video-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 20px;
-  min-width: 0;
-  padding: 16px 22px 12px;
-}
-
-h1 {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.video-meta {
-  flex: 0 1 auto;
-  max-width: min(48%, 440px);
-  margin: 0;
-  overflow: hidden;
-  color: var(--faint);
-  font-size: 11.5px;
-  line-height: 1.4;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .small-button,
 .tool-button,
 .primary-button {
@@ -454,9 +419,7 @@ select:focus-visible {
   gap: 10px;
   min-height: 52px;
   padding: 8px 22px;
-  border-top: 1px solid rgba(255, 255, 255, 0.055);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .control-group {
@@ -472,6 +435,7 @@ select:focus-visible {
   gap: 0;
 }
 
+.playback,
 .navigation,
 .actions,
 .preferences {
@@ -526,6 +490,11 @@ select:focus-visible {
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.tool-button .icon-replay-5 {
+  fill: currentColor;
+  stroke: none;
 }
 
 .tool-button.is-on,
@@ -719,10 +688,6 @@ select:hover {
 }
 
 @media (max-width: 760px) {
-  .video-heading {
-    padding: 14px 16px 11px;
-  }
-
   .controlbar {
     padding-inline: 16px;
   }
@@ -743,20 +708,6 @@ select:hover {
 }
 
 @media (max-width: 640px) {
-  .video-heading {
-    gap: 12px;
-    padding: 12px 14px 10px;
-  }
-
-  h1 {
-    font-size: 13px;
-  }
-
-  .video-meta {
-    max-width: 48%;
-    font-size: 11px;
-  }
-
   .controlbar {
     gap: 6px;
     padding: 8px 12px;
@@ -826,20 +777,6 @@ select:hover {
 }
 
 @media (max-width: 380px) {
-  .video-heading {
-    gap: 10px;
-    padding: 10px 12px 9px;
-  }
-
-  h1 {
-    font-size: 14px;
-  }
-
-  .video-meta {
-    max-width: 50%;
-    font-size: 10.5px;
-  }
-
   .controlbar {
     gap: 4px;
     padding: 8px 12px 9px;

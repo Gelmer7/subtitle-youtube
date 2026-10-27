@@ -4,10 +4,3 @@ html.legrendas-active .caption-window {
   opacity: 0 !important;
   pointer-events: none !important;
 }
-
-/* Modo leitura: o áudio continua, mas a imagem do player fica oculta. */
-html.legrendas-reader-audio #movie_player .html5-video-container,
-html.legrendas-reader-audio #movie_player .ytp-caption-window-container,
-html.legrendas-reader-audio #movie_player .ytp-preview {
-  visibility: hidden !important;
-}

@@ -11,18 +11,33 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="video-heading">
-          <h1 id="videoTitle">A ligar ao vídeo…</h1>
-          <p id="videoMeta" class="video-meta"></p>
-        </div>
-
-        <div class="controlbar">
+        <div class="controlbar" role="toolbar" aria-label="Controlos do leitor">
           <div class="control-group transport">
             <span id="timeDisplay" class="time-display">
               <span id="timeCurrent">00:00</span>
               <span class="time-sep" aria-hidden="true">/</span>
               <span id="timeTotal" class="time-total">00:00</span>
             </span>
+          </div>
+
+          <div class="control-group playback" role="group" aria-label="Retroceder">
+            <button
+              id="seekBack"
+              class="tool-button"
+              type="button"
+              aria-label="Retroceder 5 segundos"
+              title="Retroceder 5 segundos (←)"
+            >
+              <svg
+                class="icon-replay-5"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+                <text x="12" y="16" text-anchor="middle" font-size="6.5" font-weight="700" fill="currentColor" stroke="none">5</text>
+              </svg>
+            </button>
           </div>
 
           <div class="control-group navigation" role="group" aria-label="Velocidade de reprodução">

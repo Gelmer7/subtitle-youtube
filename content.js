@@ -25,7 +25,6 @@
     messageCount: 0,
     readerActive: false,
     readerRevision: 0,
-    audioMode: false,
   };
 
   let loadSeq = 0;
@@ -191,8 +190,6 @@
       player.classList.remove('legrendas-fs');
       player.style.removeProperty('--legrendas-fs-h');
     }
-
-    document.documentElement.classList.remove('legrendas-reader-audio');
   }
 
   function debug(extra = {}) {
@@ -210,7 +207,6 @@
         messageCount: state.messageCount,
         lastMessage: state.lastMessage,
         readerActive: state.readerActive,
-        audioMode: state.audioMode,
         ...extra,
       });
     } catch {
@@ -424,39 +420,8 @@
     return data;
   }
 
-  function applyLowestQuality() {
-    sendToPage('SET_QUALITY');
-  }
-
-  function restoreQuality() {
-    sendToPage('RESTORE_QUALITY');
-  }
-
-  function syncReaderAudioVisuals() {
-    const active = state.readerActive && !isAd();
-    document.documentElement.classList.toggle(
-      'legrendas-reader-audio',
-      active
-    );
-  }
-
-  function enterAudioMode() {
-    if (!state.audioMode) state.audioMode = true;
-    applyLowestQuality();
-    syncReaderAudioVisuals();
-  }
-
-  function exitAudioMode() {
-    state.audioMode = false;
-    document.documentElement.classList.remove('legrendas-reader-audio');
-    restoreQuality();
-  }
-
   function setReaderActive(active) {
     state.readerActive = !!active;
-    if (state.readerActive) enterAudioMode();
-    else exitAudioMode();
-    return buildReaderState(false);
   }
 
   async function handleReaderCommand(action, value) {
@@ -518,7 +483,6 @@
           return { ok: false, error: 'comando-desconhecido' };
       }
 
-      if (state.readerActive) syncReaderAudioVisuals();
       return getReaderLightState();
     } catch (error) {
       return {
@@ -837,7 +801,6 @@
     setActiveClass(true);
     sendToPage('GET');
     ensureCC();
-    if (state.readerActive) enterAudioMode();
     debug({ init: true, attempt });
 
     clearTimeout(state.retryTimer);
@@ -1028,7 +991,6 @@
         return false;
       }
       setReaderActive(true);
-      syncReaderAudioVisuals();
       sendResponse({ ok: true, state: buildReaderState(false) });
       return false;
     }
@@ -1049,7 +1011,6 @@
         return false;
       }
       if (message.reader && !state.readerActive) setReaderActive(true);
-      syncReaderAudioVisuals();
       sendResponse(buildReaderState(!!message.full));
       return false;
     }
@@ -1107,10 +1068,6 @@
     const ad = isAd();
     if (wasAd && !ad) {
       wasAd = false;
-      if (state.readerActive) {
-        applyLowestQuality();
-        syncReaderAudioVisuals();
-      }
       setTimeout(() => {
         if (!state.settings.enabled || !isWatchPage() || state.ready) return;
         state.loading = false;
@@ -1121,7 +1078,6 @@
       return;
     }
     wasAd = ad;
-    if (state.readerActive && ad) syncReaderAudioVisuals();
   }, 500);
 
   loadSettings().then(() => {

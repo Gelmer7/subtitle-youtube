@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SubIngles",
-  "version": "0.3.0",
-  "description": "Leitor de transcrições do YouTube com tradução de palavras e linhas e o áudio do vídeo.",
+  "version": "0.3.1",
+  "description": "Leitor de transcrições do YouTube com tradução de palavras e linhas; o vídeo continua visível.",
   "minimum_chrome_version": "111",
   "permissions": ["storage"],
   "host_permissions": [
