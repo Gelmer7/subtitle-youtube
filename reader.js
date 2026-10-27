@@ -1,6 +1,7 @@
 'use strict';
 
 const SETTINGS_DEFAULTS = {
+  enabled: true,
   targetLang: 'pt-BR',
   showTranslation: false,
   fontSize: 20,
@@ -23,8 +24,13 @@ const els = {
   timeTotal: document.getElementById('timeTotal'),
   seekBack: document.getElementById('seekBack'),
   rateSelect: document.getElementById('rateSelect'),
-  reloadYouTube: document.getElementById('reloadYouTube'),
+  targetLangSelect: document.getElementById('targetLangSelect'),
+  fontSizeButton: document.getElementById('fontSizeButton'),
+  fontSizePanel: document.getElementById('fontSizePanel'),
+  fontSizeRange: document.getElementById('fontSizeRange'),
+  fontSizeOut: document.getElementById('fontSizeOut'),
   followAudio: document.getElementById('followAudio'),
+  powerToggle: document.getElementById('powerToggle'),
   wordPopover: document.getElementById('wordPopover'),
   popWord: document.getElementById('popWord'),
   popTranslation: document.getElementById('popTranslation'),
@@ -47,9 +53,7 @@ const state = {
   base: null,
   connected: false,
   connectionError: '',
-  reloading: false,
-  reloadUntil: 0,
-  reloadTimer: 0,
+  disabled: false,
   stateGeneration: 0,
   lineEls: [],
   wordEls: [],
@@ -88,6 +92,7 @@ const state = {
     endedRetryAt: 0,
   },
   toastTimer: 0,
+  fontSaveTimer: 0,
   destroyed: false,
   videoId: null,
 };
@@ -168,6 +173,7 @@ function setSync(values) {
 }
 
 function normalizeSettings() {
+  state.settings.enabled = state.settings.enabled !== false;
   state.settings.targetLang = state.settings.targetLang === 'es' ? 'es' : 'pt-BR';
   state.settings.showTranslation = false;
   state.settings.pauseOnLookup = true;
@@ -204,9 +210,20 @@ async function loadSettings() {
   }
 }
 
-function applySettingsToUi() {
-  const readerSize = Math.min(42, Math.max(22, state.settings.fontSize + 6));
+function applyFontSize() {
+  const size = state.settings.fontSize;
+  const readerSize = Math.min(42, Math.max(22, size + 6));
   document.documentElement.style.setProperty('--reader-size', `${readerSize}px`);
+
+  if (els.fontSizeRange) els.fontSizeRange.value = String(size);
+  if (els.fontSizeOut) els.fontSizeOut.textContent = `${size} px`;
+}
+
+function applySettingsToUi() {
+  applyFontSize();
+  if (els.targetLangSelect) {
+    els.targetLangSelect.value = state.settings.targetLang;
+  }
   updatePreferenceButtons();
   els.transcript.classList.toggle(
     'hide-translation',
@@ -215,7 +232,18 @@ function applySettingsToUi() {
 }
 
 function updatePreferenceButtons() {
+  const enabled = state.settings.enabled;
   els.followAudio.setAttribute('aria-pressed', String(state.follow));
+  els.powerToggle.setAttribute('aria-pressed', String(enabled));
+  els.powerToggle.setAttribute(
+    'aria-label',
+    enabled ? 'Desativar extensão' : 'Ativar extensão'
+  );
+  els.powerToggle.title = enabled ? 'Desativar extensão' : 'Ativar extensão';
+  els.powerToggle.classList.toggle('is-on', enabled);
+  els.seekBack.disabled = !enabled;
+  els.rateSelect.disabled = !enabled;
+  els.followAudio.disabled = !enabled;
   syncLineToolState();
 }
 
@@ -365,13 +393,13 @@ function isCurrentlyPlaying() {
 function describeError(code) {
   switch (code) {
     case 'disabled':
-      return 'A extensão está desativada. Ativa-a no ícone da barra do Chrome.';
+      return 'A extensão está desativada. Clica no botão de energia no controlbar para a ativar.';
     case 'not-watch':
       return 'Abre um vídeo do YouTube para usar o modo leitura.';
     case 'tab-unavailable':
       return 'A aba do YouTube foi fechada. Reabre o vídeo no YouTube e volta a abrir o leitor.';
     case 'timeout':
-      return 'A aba do YouTube não respondeu. Usa o botão Recarregar YouTube para tentar novamente.';
+      return 'A aba do YouTube não respondeu. Clica em Tentar novamente ou recarrega a página do YouTube.';
     case 'play-blocked':
       return 'O Chrome bloqueou a reprodução vinda desta janela. Carrega no play da aba do YouTube.';
     case 'sem-video':
@@ -506,6 +534,26 @@ function updateEmptyState(data) {
 
   if (heading.textContent !== title) heading.textContent = title;
   if (els.emptyText.textContent !== text) els.emptyText.textContent = text;
+}
+
+function showDisabledState() {
+  setStatus(state.connectionError, 'error');
+  els.emptyState.hidden = false;
+  els.transcript.hidden = true;
+  els.retryButton.hidden = false;
+  els.retryButton.textContent = 'Ativar extensão';
+
+  const heading = els.emptyState.querySelector('h2');
+  if (heading) heading.textContent = 'Extensão desativada';
+
+  els.emptyText.textContent =
+    'A transcrição está em pausa. Clica no botão de energia no controlbar ou em Ativar extensão.';
+}
+
+function resetDisabledState() {
+  if (!state.disabled) return;
+  state.disabled = false;
+  els.retryButton.textContent = 'Tentar novamente';
 }
 
 function renderTranscript() {
@@ -941,8 +989,7 @@ function applyPlayback(data) {
   state.light = data;
   state.connected = true;
   state.connectionError = '';
-
-  if (state.reloading) finishReload();
+  resetDisabledState();
 
   const playing = !data.paused && !data.ad && !data.ended;
   state.base = {
@@ -1005,9 +1052,26 @@ function applyFull(data, force = false) {
 }
 
 function applyFailure(result) {
-  if (state.reloading && performance.now() < state.reloadUntil) return;
-
   const code = (result && result.error) || 'tab-unavailable';
+
+  if (code === 'disabled') {
+    state.disabled = true;
+    state.connected = false;
+    state.connectionError = describeError('disabled');
+    state.pendingFull = null;
+
+    if (state.base) {
+      state.base.time = getEstimatedTime();
+      state.base.paused = true;
+      state.base.at = performance.now();
+    }
+
+    showDisabledState();
+    return;
+  }
+
+  resetDisabledState();
+
   state.connected = false;
   state.connectionError = describeError(code);
   state.pendingFull = null;
@@ -1698,6 +1762,15 @@ function onPopoverPointerLeave(event) {
 
 function onDocumentClick(event) {
   cancelHoverTimers();
+
+  if (
+    !els.fontSizePanel.hidden &&
+    (!(event.target instanceof Element) ||
+      !event.target.closest('.font-size'))
+  ) {
+    closeFontPanel();
+  }
+
   if (!state.popover.open) return;
   const target = event.target;
   if (!(target instanceof Element)) {
@@ -1709,71 +1782,74 @@ function onDocumentClick(event) {
   closePopover();
 }
 
-function finishReload(error = '') {
-  state.reloading = false;
-  state.reloadUntil = 0;
-  clearTimeout(state.reloadTimer);
-  state.reloadTimer = 0;
-
-  if (els.reloadYouTube) {
-    els.reloadYouTube.disabled = false;
-    els.reloadYouTube.classList.remove('is-reloading');
-    els.reloadYouTube.removeAttribute('aria-busy');
-  }
-
-  if (error) {
-    const text = describeError(error);
-    setStatus(text, 'error');
-    showToast(text);
-  }
+function setFontPanel(open) {
+  els.fontSizePanel.hidden = !open;
+  els.fontSizeButton.setAttribute('aria-expanded', String(open));
 }
 
-async function reloadYouTubePage() {
-  if (state.reloading) return;
+function closeFontPanel() {
+  setFontPanel(false);
+}
 
-  if (!Number.isInteger(state.tabId) || state.tabId <= 0) {
-    showToast(describeError('sem-video'));
-    return;
-  }
+function toggleFontPanel() {
+  setFontPanel(els.fontSizePanel.hidden);
+}
 
-  state.pendingFull = null;
-  if (state.popover.open) closePopover({ resume: false });
-  state.lookupSession = null;
-  state.reloading = true;
-  state.reloadUntil = performance.now() + 15000;
-  state.stateGeneration += 1;
-  state.pollBusy = false;
-  state.fullLoading = false;
-  clearTimeout(state.pollTimer);
-
-  if (els.reloadYouTube) {
-    els.reloadYouTube.disabled = true;
-    els.reloadYouTube.classList.add('is-reloading');
-    els.reloadYouTube.setAttribute('aria-busy', 'true');
-  }
-
-  setStatus('A recarregar a página do YouTube…', 'ok');
-
-  const result = await sendBackground(
-    'legrendas:reader-reload',
-    { tabId: state.tabId },
-    8000
+function onFontSizeInput() {
+  const size = Math.min(
+    28,
+    Math.max(16, Number(els.fontSizeRange.value) || 20)
   );
+  state.settings.fontSize = size;
+  applyFontSize();
+  clearTimeout(state.fontSaveTimer);
+  state.fontSaveTimer = setTimeout(() => persist('fontSize', size), 220);
+}
 
-  if (!result || result.ok === false) {
-    finishReload((result && result.error) || 'timeout');
-    schedulePoll(400);
-    return;
+function onFontSizeChange() {
+  clearTimeout(state.fontSaveTimer);
+  persist('fontSize', state.settings.fontSize);
+}
+
+function setTargetLang(value) {
+  const next = value === 'es' ? 'es' : 'pt-BR';
+  if (next === state.settings.targetLang) return;
+
+  state.settings.targetLang = next;
+  if (els.targetLangSelect) els.targetLangSelect.value = next;
+  state.openLineTranslations.clear();
+  state.lineTranslationRequests.clear();
+  closePopover({ resume: false });
+  persist('targetLang', next);
+  requestFull(true);
+}
+
+function setExtensionEnabled(next) {
+  const value = !!next;
+  if (value === state.settings.enabled) return;
+
+  state.settings.enabled = value;
+  updatePreferenceButtons();
+  persist('enabled', value);
+
+  if (value) {
+    setStatus('A ativar a extensão…', 'ok');
+    setTimeout(() => {
+      if (state.destroyed) return;
+      requestFull(true);
+      schedulePoll(400);
+    }, 300);
+  } else {
+    applyFailure({ ok: false, error: 'disabled' });
   }
-
-  clearTimeout(state.reloadTimer);
-  state.reloadTimer = setTimeout(() => {
-    if (state.reloading) finishReload('timeout');
-  }, 15000);
-  schedulePoll(400);
 }
 
 async function retryReader() {
+  if (!state.settings.enabled) {
+    setExtensionEnabled(true);
+    return;
+  }
+
   els.emptyState.hidden = false;
   setStatus('A tentar novamente…', 'ok');
   const result = await runCommand('retry', undefined, { silent: true });
@@ -1791,6 +1867,11 @@ function togglePlayPause() {
 
 function onKeyDown(event) {
   if (event.key === 'Escape') {
+    if (!els.fontSizePanel.hidden) {
+      event.preventDefault();
+      closeFontPanel();
+      return;
+    }
     if (state.popover.open) {
       event.preventDefault();
       closePopover();
@@ -1875,6 +1956,25 @@ function onStorageChanged(changes, area) {
   let changed = false;
   let targetChanged = false;
 
+  if (changes.enabled) {
+    const next = changes.enabled.newValue !== false;
+    if (next !== state.settings.enabled) {
+      state.settings.enabled = next;
+      changed = true;
+
+      if (next) {
+        setStatus('A ativar a extensão…', 'ok');
+        setTimeout(() => {
+          if (state.destroyed) return;
+          requestFull(true);
+          schedulePoll(400);
+        }, 300);
+      } else {
+        applyFailure({ ok: false, error: 'disabled' });
+      }
+    }
+  }
+
   if (changes.targetLang) {
     const next = changes.targetLang.newValue === 'es' ? 'es' : 'pt-BR';
     if (next !== state.settings.targetLang) {
@@ -1887,12 +1987,16 @@ function onStorageChanged(changes, area) {
   }
 
   if (changes.fontSize) {
-    state.settings.fontSize = Math.min(
+    const next = Math.min(
       28,
       Math.max(16, Number(changes.fontSize.newValue) || 20)
     );
-    applySettingsToUi();
-    changed = true;
+
+    if (next !== state.settings.fontSize) {
+      state.settings.fontSize = next;
+      applyFontSize();
+      changed = true;
+    }
   }
 
   if (changes.followAudio) {
@@ -1929,7 +2033,20 @@ function bindEvents() {
     runCommand('rate', Number(els.rateSelect.value) || 1);
   });
 
-  els.reloadYouTube.addEventListener('click', reloadYouTubePage);
+  els.targetLangSelect.addEventListener('change', () => {
+    setTargetLang(els.targetLangSelect.value);
+  });
+
+  els.fontSizeButton.addEventListener('click', () => {
+    toggleFontPanel();
+  });
+
+  els.fontSizeRange.addEventListener('input', onFontSizeInput);
+  els.fontSizeRange.addEventListener('change', onFontSizeChange);
+
+  els.powerToggle.addEventListener('click', () => {
+    setExtensionEnabled(!state.settings.enabled);
+  });
 
   els.followAudio.addEventListener('click', () => {
     state.follow = !state.follow;
@@ -1964,7 +2081,7 @@ function bindEvents() {
   window.addEventListener('beforeunload', () => {
     state.destroyed = true;
     clearTimeout(state.pollTimer);
-    clearTimeout(state.reloadTimer);
+    clearTimeout(state.fontSaveTimer);
     cancelAnimationFrame(state.rafId);
     cancelHoverTimers();
   });

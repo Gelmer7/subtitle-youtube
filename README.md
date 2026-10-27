@@ -14,9 +14,10 @@ No Android, usa um navegador com suporte a extensões (por exemplo, o Quetta) e 
 
 1. Abre um vídeo do YouTube com legendas (CC).
 2. Clica no ícone da extensão.
-3. Clica em **Abrir leitor**.
 
-O leitor fica ligado à aba do YouTube. No desktop abre numa janela separada e podes pôr as duas janelas lado a lado; no mobile pode abrir numa aba, por isso alterna entre a aba do vídeo e a aba do leitor. Se minimizares a aba, o áudio continua. Mantém a aba aberta enquanto usas o leitor.
+O leitor abre diretamente, sem um segundo clique. Se já estiver aberto, o clique volta a focá-lo. O leitor fica ligado à aba do YouTube. No desktop abre numa janela separada e podes pôr as duas janelas lado a lado; no mobile pode abrir numa aba, por isso alterna entre a aba do vídeo e a aba do leitor. Se minimizares a aba, o áudio continua. Mantém a aba aberta enquanto usas o leitor.
+
+Em navegadores que não suportam `chrome.action.onClicked` (alguns Android com extensões), o popup antigo aparece por instantes e abre o leitor automaticamente.
 
 ## Leitor
 
@@ -27,8 +28,10 @@ O leitor fica ligado à aba do YouTube. No desktop abre numa janela separada e p
 - O botão de tradução aparece em todas as linhas e abre/fecha a tradução completa dessa linha.
 - Passar o rato numa palavra mostra a tradução; clicar fixa o popover com contexto e **Repetir frase**.
 - O áudio pausa ao abrir uma tradução e retoma ao fechar, se estava a tocar.
-- Controlos: retroceder 5 s, velocidade, seguir áudio, tempo atual/total e **Recarregar YouTube**.
-- **Recarregar YouTube** recarrega a aba do YouTube e volta a ligar o leitor automaticamente.
+- Controlos: tempo atual/total, retroceder 5 s, velocidade, idioma da tradução (PT/ES), tamanho do texto (Aa), seguir áudio e energia.
+- O botão **Aa** abre uma barra para aumentar ou reduzir o texto sem sair do leitor.
+- O botão de energia desativa a extensão e volta a mostrar o CC nativo; o leitor fica aberto e pode ser reativado no mesmo sítio.
+- Se a ligação ao YouTube falhar, usa **Tentar novamente** no estado vazio ou recarrega a página do YouTube.
 
 ### Atalhos
 
@@ -36,13 +39,13 @@ O leitor fica ligado à aba do YouTube. No desktop abre numa janela separada e p
 - `←` / `→`: recuar/avançar 5 s
 - `↑` / `↓`: linha anterior/seguinte
 - `[` / `]`: linha anterior/seguinte
-- `Esc`: fecha o popover de tradução
+- `Esc`: fecha o popover de tradução ou a barra do tamanho do texto
 
 ## Como funciona
 
 1. `inject.js` corre no mundo MAIN e captura os pedidos `timedtext` do player, incluindo o token `pot` e o corpo das respostas.
 2. `content.js` escolhe a faixa inglesa, descarrega as cues em `json3` e mantém o estado que o leitor consome. Já não cria a barra por baixo do vídeo.
-3. `background.js` abre `reader.html` numa janela ou, quando o navegador não suporta janelas de extensão, numa aba; faz a ponte de mensagens com a aba do YouTube e serve o fallback de tradução.
+3. `background.js` recebe o clique no ícone e abre `reader.html` diretamente numa janela ou, quando o navegador não suporta janelas de extensão, numa aba; faz a ponte de mensagens com a aba do YouTube e serve o fallback de tradução.
 4. O leitor pede o estado ao content script, desenha a transcrição e envia comandos de play, pause, seek, velocidade e mute para o player.
 5. O vídeo continua visível e a qualidade não é alterada. No desktop o CC nativo fica escondido para não duplicar o texto do leitor; no mobile fica visível, porque o leitor abre numa aba separada.
 6. A tradução é pedida à medida das necessidades: palavras no popover e linhas no botão de tradução.
@@ -78,6 +81,6 @@ background.js    # janela/aba do leitor, mensagens e tradução
 reader.html      # janela ou aba do modo leitura
 reader.css
 reader.js
-popup.html/css/js
+popup.html/css/js # fallback para navegadores sem clique direto
 icons/
 ```

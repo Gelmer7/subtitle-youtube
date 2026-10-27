@@ -921,13 +921,6 @@
 
   function applySettings() {
     if (!state.settings.enabled) {
-      try {
-        chrome.runtime.sendMessage({
-          type: 'legrendas:close-reader-for-tab',
-        });
-      } catch {
-        // ignore
-      }
       deactivatePage();
       return;
     }
@@ -1033,7 +1026,10 @@
 
     if (message.type === 'legrendas:reader-active') {
       if (!state.settings.enabled || !isWatchPage()) {
-        sendResponse({ ok: false, error: 'indisponivel' });
+        sendResponse({
+          ok: false,
+          error: state.settings.enabled ? 'not-watch' : 'disabled',
+        });
         return false;
       }
       setReaderActive(true);
@@ -1133,13 +1129,6 @@
       onNavigate();
     } else {
       deactivatePage();
-      try {
-        chrome.runtime.sendMessage({
-          type: 'legrendas:close-reader-for-tab',
-        });
-      } catch {
-        // ignore
-      }
     }
   });
 })();

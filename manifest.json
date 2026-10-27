@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SubIngles",
-  "version": "0.4.0",
-  "description": "Leitor de transcrições do YouTube no desktop e mobile, com tradução de palavras e linhas; o vídeo continua visível.",
+  "version": "0.5.0",
+  "description": "Leitor de transcrições do YouTube no desktop e mobile, com tradução, idioma e tamanho do texto.",
   "minimum_chrome_version": "111",
   "permissions": ["storage"],
   "host_permissions": [
@@ -36,7 +36,6 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html",
     "default_title": "SubIngles",
     "default_icon": {
       "16": "icons/icon16.png",

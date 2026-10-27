@@ -53,22 +53,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'legrendas:reader-reload') {
-    reloadYouTubeTab(message.tabId).then(sendResponse, (error) =>
-      sendResponse({ ok: false, error: String(error) })
-    );
-    return true;
-  }
-
   if (message.type === 'legrendas:close-reader') {
     closeReaderWindow(sender, message.tabId).then(sendResponse, (error) =>
-      sendResponse({ ok: false, error: String(error) })
-    );
-    return true;
-  }
-
-  if (message.type === 'legrendas:close-reader-for-tab') {
-    closeReaderForTab(sender.tab && sender.tab.id).then(sendResponse, (error) =>
       sendResponse({ ok: false, error: String(error) })
     );
     return true;
@@ -87,6 +73,101 @@ if (chrome.tabs && chrome.tabs.onRemoved) {
   chrome.tabs.onRemoved.addListener((tabId) => {
     cleanupRemovedTab(tabId).catch(() => {});
   });
+}
+
+let actionNoticeTimer = 0;
+
+function clearActionNotice() {
+  clearTimeout(actionNoticeTimer);
+  actionNoticeTimer = 0;
+
+  if (!chrome.action) return;
+
+  try {
+    chrome.action.setBadgeText({ text: '' });
+    chrome.action.setTitle({ title: 'SubIngles' });
+  } catch {
+    // The action UI may be unavailable.
+  }
+}
+
+function showActionNotice(message) {
+  if (!chrome.action) return;
+
+  clearTimeout(actionNoticeTimer);
+
+  try {
+    chrome.action.setBadgeBackgroundColor({ color: '#b3261e' });
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setTitle({
+      title: message || 'Abre um vídeo do YouTube',
+    });
+  } catch {
+    // The action UI may be unavailable.
+  }
+
+  actionNoticeTimer = setTimeout(clearActionNotice, 2600);
+}
+
+async function handleActionClick(tab) {
+  let activeTab = tab;
+
+  if (!activeTab || !Number.isInteger(activeTab.id)) {
+    const tabs = await queryTabs({ active: true, currentWindow: true });
+    activeTab = tabs.find((item) => item && Number.isInteger(item.id)) || null;
+  }
+
+  if (!activeTab || !Number.isInteger(activeTab.id)) {
+    showActionNotice('Abre um vídeo do YouTube');
+    return;
+  }
+
+  if (
+    typeof activeTab.url === 'string' &&
+    activeTab.url &&
+    !YOUTUBE_WATCH_URL.test(activeTab.url)
+  ) {
+    showActionNotice('Abre um vídeo do YouTube');
+    return;
+  }
+
+  let result;
+  try {
+    result = await openReader(activeTab.id);
+  } catch {
+    result = null;
+  }
+
+  if (!result || result.ok === false) {
+    showActionNotice(
+      (result && result.error) || 'Não foi possível abrir o leitor'
+    );
+    return;
+  }
+
+  clearActionNotice();
+}
+
+if (chrome.action && chrome.action.onClicked) {
+  chrome.action.onClicked.addListener((tab) => {
+    handleActionClick(tab).catch(() => {});
+  });
+
+  // Clear a popup that may have been persisted by the fallback below.
+  if (typeof chrome.action.setPopup === 'function') {
+    try {
+      chrome.action.setPopup({ popup: '' });
+    } catch {
+      // Not supported.
+    }
+  }
+} else if (chrome.action && typeof chrome.action.setPopup === 'function') {
+  // Browsers without action.onClicked keep the old popup as a launcher.
+  try {
+    chrome.action.setPopup({ popup: 'popup.html' });
+  } catch {
+    // Not supported.
+  }
 }
 
 function getTab(tabId) {
@@ -591,38 +672,6 @@ async function forwardToTab(tabId, message) {
   return sendTabMessage(id, message);
 }
 
-async function reloadYouTubeTab(tabId) {
-  const id = Number(tabId);
-  if (!Number.isInteger(id) || id <= 0) {
-    return { ok: false, error: 'sem-video' };
-  }
-
-  const tab = await getTab(id);
-  if (!tab) return { ok: false, error: 'tab-unavailable' };
-
-  if (
-    typeof tab.url === 'string' &&
-    tab.url &&
-    !YOUTUBE_WATCH_URL.test(tab.url)
-  ) {
-    return { ok: false, error: 'not-watch' };
-  }
-
-  return new Promise((resolve) => {
-    try {
-      chrome.tabs.reload(id, { bypassCache: false }, () => {
-        if (chrome.runtime.lastError) {
-          resolve({ ok: false, error: 'tab-unavailable' });
-        } else {
-          resolve({ ok: true });
-        }
-      });
-    } catch (error) {
-      resolve({ ok: false, error: String(error) });
-    }
-  });
-}
-
 async function closeReaderWindow(sender, tabIdHint) {
   const map = await getReaderMap();
   const readerTabId = sender && sender.tab && sender.tab.id;
@@ -649,23 +698,6 @@ async function closeReaderWindow(sender, tabIdHint) {
     type: 'legrendas:reader-closed',
   });
 
-  return { ok: true };
-}
-
-async function closeReaderForTab(tabId) {
-  const id = Number(tabId);
-  if (!Number.isInteger(id) || id <= 0) return { ok: true };
-
-  const map = await getReaderMap();
-  const entry = map[id];
-  if (!entry) return { ok: true };
-
-  const youtubeTab = await getTab(id);
-  await normalizeSurfaceForYoutube(entry, youtubeTab);
-  await removeEntrySurface(entry);
-  delete map[id];
-  await saveReaderMap(map);
-  await sendTabMessage(id, { type: 'legrendas:reader-closed' });
   return { ok: true };
 }
 

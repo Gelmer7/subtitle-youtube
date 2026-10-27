@@ -437,9 +437,15 @@ select:focus-visible {
 
 .playback,
 .navigation,
-.actions,
-.preferences {
+.language,
+.font-size,
+.preferences,
+.power {
   flex: 0 0 auto;
+}
+
+.font-size {
+  position: relative;
 }
 
 .tool-button {
@@ -470,15 +476,58 @@ select:focus-visible {
   cursor: default;
 }
 
-.tool-button.is-reloading svg {
-  animation: reload-spin 0.8s linear infinite;
-  transform-origin: center;
+.font-button {
+  width: 34px;
 }
 
-@keyframes reload-spin {
-  to {
-    transform: rotate(360deg);
-  }
+.font-aa {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  line-height: 1;
+}
+
+.font-panel {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 40;
+  width: 196px;
+  padding: 11px 12px 12px;
+  border: 1px solid #3a3a40;
+  border-radius: 10px;
+  background: #17171a;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.font-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.font-panel-head output {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.font-range {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.font-range:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .tool-button svg {
@@ -498,7 +547,7 @@ select:focus-visible {
 }
 
 .tool-button.is-on,
-.preferences .tool-button[aria-pressed="true"] {
+.tool-button[aria-pressed="true"] {
   border-color: rgba(88, 166, 255, 0.45);
   color: var(--text);
   background: rgba(88, 166, 255, 0.1);
@@ -565,6 +614,18 @@ select {
 select:hover {
   border-color: #4a4a50;
   color: var(--text);
+}
+
+select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#targetLangSelect {
+  min-width: 54px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-align: center;
 }
 
 .word-popover {
@@ -709,8 +770,8 @@ select:hover {
 
 @media (max-width: 640px) {
   .controlbar {
-    gap: 6px;
-    padding: 8px 12px;
+    gap: 5px;
+    padding: 8px 10px;
   }
 
   .control-group {
@@ -778,8 +839,8 @@ select:hover {
 
 @media (max-width: 380px) {
   .controlbar {
-    gap: 4px;
-    padding: 8px 12px 9px;
+    gap: 3px;
+    padding: 8px 8px 9px;
   }
 
   .transport {
@@ -788,6 +849,11 @@ select:hover {
 
   .navigation {
     gap: 3px;
+  }
+
+  .time-total,
+  .time-sep {
+    display: none;
   }
 
   .time-display {
@@ -799,9 +865,23 @@ select:hover {
     gap: 5px;
   }
 
+  .tool-button {
+    width: 33px;
+    height: 33px;
+  }
+
+  .font-panel {
+    width: 184px;
+    padding: 10px 11px 11px;
+  }
+
   select {
     padding: 3px 20px 3px 8px;
     font-size: 10.5px;
+  }
+
+  #targetLangSelect {
+    min-width: 50px;
   }
 
   .select-wrap::after {
@@ -844,9 +924,5 @@ select:hover {
   button,
   select {
     transition: none;
-  }
-
-  .tool-button.is-reloading svg {
-    animation: none;
   }
 }

@@ -17,6 +17,7 @@ const readerStatus = $('readerStatus');
 let saveTimer = 0;
 let readerTabId = null;
 let readerBusy = false;
+let autoOpenDone = false;
 
 function setReaderStatus(text, isError = false) {
   if (!readerStatus) return;
@@ -79,7 +80,6 @@ async function refreshReaderAvailability() {
 
 function openReaderWindow() {
   if (readerBusy || !readerTabId) return;
-
   readerBusy = true;
   readerButton.disabled = true;
   setReaderStatus('A abrir o leitor…');
@@ -125,6 +125,14 @@ function openReaderWindow() {
   }
 }
 
+function maybeAutoOpenReader() {
+  if (autoOpenDone || readerBusy) return;
+  if (!enabled.checked || !readerTabId) return;
+
+  autoOpenDone = true;
+  openReaderWindow();
+}
+
 function renderFontSize() {
   const size = Number(fontSize.value) || 20;
   fontSizeOut.textContent = `${size} px`;
@@ -165,7 +173,8 @@ async function load() {
 
 enabled.addEventListener('change', () => {
   save();
-  refreshReaderAvailability();
+  autoOpenDone = false;
+  refreshReaderAvailability().then(maybeAutoOpenReader);
 });
 targetLang.addEventListener('change', save);
 fontSize.addEventListener('input', () => {
@@ -175,4 +184,4 @@ fontSize.addEventListener('input', () => {
 fontSize.addEventListener('change', save);
 readerButton.addEventListener('click', openReaderWindow);
 
-load().then(refreshReaderAvailability);
+load().then(refreshReaderAvailability).then(maybeAutoOpenReader);

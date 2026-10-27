@@ -52,19 +52,54 @@
             </label>
           </div>
 
-          <div class="control-group actions" role="group" aria-label="Ações">
+          <div class="control-group language" role="group" aria-label="Idioma da tradução">
+            <label class="select-wrap">
+              <span class="sr-only">Idioma da tradução</span>
+              <select
+                id="targetLangSelect"
+                aria-label="Idioma da tradução"
+                title="Idioma da tradução"
+              >
+                <option value="pt-BR">PT</option>
+                <option value="es">ES</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="control-group font-size" role="group" aria-label="Tamanho do texto">
             <button
-              id="reloadYouTube"
-              class="tool-button"
+              id="fontSizeButton"
+              class="tool-button font-button"
               type="button"
-              aria-label="Recarregar página do YouTube"
-              title="Recarregar a página do YouTube"
+              aria-label="Tamanho do texto"
+              aria-expanded="false"
+              aria-controls="fontSizePanel"
+              title="Tamanho do texto"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M20.5 12a8.5 8.5 0 1 1-2.49-6.01" />
-                <path d="M20.5 3.5V9H15" />
-              </svg>
+              <span class="font-aa" aria-hidden="true">Aa</span>
             </button>
+            <div
+              id="fontSizePanel"
+              class="font-panel"
+              role="dialog"
+              aria-label="Tamanho do texto"
+              hidden
+            >
+              <div class="font-panel-head">
+                <span>Tamanho do texto</span>
+                <output id="fontSizeOut" for="fontSizeRange">20 px</output>
+              </div>
+              <input
+                id="fontSizeRange"
+                class="font-range"
+                type="range"
+                min="16"
+                max="28"
+                step="1"
+                value="20"
+                aria-label="Tamanho do texto"
+              />
+            </div>
           </div>
 
           <div class="control-group preferences" role="group" aria-label="Preferências de leitura">
@@ -78,6 +113,22 @@
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="control-group power" role="group" aria-label="Estado da extensão">
+            <button
+              id="powerToggle"
+              class="tool-button"
+              type="button"
+              aria-pressed="true"
+              aria-label="Desativar extensão"
+              title="Desativar extensão"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 3v9" />
+                <path d="M6.6 6.6a8 8 0 1 0 10.8 0" />
               </svg>
             </button>
           </div>
