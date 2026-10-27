@@ -3,20 +3,14 @@
 const DEFAULTS = {
   enabled: true,
   targetLang: 'pt-BR',
-  showTranslation: true,
   fontSize: 20,
-  fullscreen: 'shrink',
 };
 
 const $ = (id) => document.getElementById(id);
 const enabled = $('enabled');
 const targetLang = $('targetLang');
-const showTranslation = $('showTranslation');
 const fontSize = $('fontSize');
 const fontSizeOut = $('fontSizeOut');
-const fullscreen = $('fullscreen');
-const previewOriginal = document.querySelector('.preview-original');
-const previewTranslation = document.querySelector('.preview-translation');
 const readerButton = $('openReader');
 const readerStatus = $('readerStatus');
 
@@ -127,23 +121,16 @@ function openReaderWindow() {
   }
 }
 
-function renderPreview() {
+function renderFontSize() {
   const size = Number(fontSize.value) || 20;
   fontSizeOut.textContent = `${size} px`;
-  previewOriginal.style.fontSize = `${Math.round(size * 0.7)}px`;
-  previewTranslation.style.fontSize = `${Math.round(size * 0.6)}px`;
-  previewTranslation.textContent = targetLang.value === 'es'
-    ? 'Esta es la línea en español.'
-    : 'Esta é a linha em português.';
 }
 
 function snapshot() {
   return {
     enabled: enabled.checked,
     targetLang: targetLang.value,
-    showTranslation: showTranslation.checked,
     fontSize: Number(fontSize.value),
-    fullscreen: fullscreen.value,
   };
 }
 
@@ -166,24 +153,19 @@ async function load() {
 
   enabled.checked = !!settings.enabled;
   targetLang.value = settings.targetLang === 'es' ? 'es' : 'pt-BR';
-  showTranslation.checked = !!settings.showTranslation;
-  fontSize.value = String(Math.min(28, Math.max(16, Number(settings.fontSize) || 20)));
-  fullscreen.value = settings.fullscreen === 'hide' ? 'hide' : 'shrink';
-  renderPreview();
+  fontSize.value = String(
+    Math.min(28, Math.max(16, Number(settings.fontSize) || 20))
+  );
+  renderFontSize();
 }
 
 enabled.addEventListener('change', () => {
   save();
   refreshReaderAvailability();
 });
-targetLang.addEventListener('change', () => {
-  renderPreview();
-  save();
-});
-showTranslation.addEventListener('change', save);
-fullscreen.addEventListener('change', save);
+targetLang.addEventListener('change', save);
 fontSize.addEventListener('input', () => {
-  renderPreview();
+  renderFontSize();
   scheduleSave();
 });
 fontSize.addEventListener('change', save);

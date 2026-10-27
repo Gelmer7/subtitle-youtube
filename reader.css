@@ -473,6 +473,7 @@ select:focus-visible {
 }
 
 .navigation,
+.actions,
 .preferences {
   flex: 0 0 auto;
 }
@@ -498,6 +499,22 @@ select:focus-visible {
 
 .tool-button:active {
   transform: translateY(1px);
+}
+
+.tool-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.tool-button.is-reloading svg {
+  animation: reload-spin 0.8s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes reload-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tool-button svg {
@@ -890,5 +907,9 @@ select:hover {
   button,
   select {
     transition: none;
+  }
+
+  .tool-button.is-reloading svg {
+    animation: none;
   }
 }

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SubIngles",
   "version": "0.3.0",
-  "description": "Legendas em inglês com tradução e um modo de leitura com o áudio do vídeo do YouTube.",
+  "description": "Leitor de transcrições do YouTube com tradução de palavras e linhas e o áudio do vídeo.",
   "minimum_chrome_version": "111",
   "permissions": ["storage"],
   "host_permissions": [

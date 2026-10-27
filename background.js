@@ -50,6 +50,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'legrendas:reader-reload') {
+    reloadYouTubeTab(message.tabId).then(sendResponse, (error) =>
+      sendResponse({ ok: false, error: String(error) })
+    );
+    return true;
+  }
+
   if (message.type === 'legrendas:close-reader') {
     closeReaderWindow(sender, message.tabId).then(sendResponse, (error) =>
       sendResponse({ ok: false, error: String(error) })
@@ -254,6 +261,38 @@ async function forwardToTab(tabId, message) {
     return { ok: false, error: 'sem-video' };
   }
   return sendTabMessage(id, message);
+}
+
+async function reloadYouTubeTab(tabId) {
+  const id = Number(tabId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: 'sem-video' };
+  }
+
+  const tab = await getTab(id);
+  if (!tab) return { ok: false, error: 'tab-unavailable' };
+
+  if (
+    typeof tab.url === 'string' &&
+    tab.url &&
+    !/^https:\/\/www\.youtube\.com\/(watch|live)([/?#]|$)/.test(tab.url)
+  ) {
+    return { ok: false, error: 'not-watch' };
+  }
+
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.reload(id, { bypassCache: false }, () => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: 'tab-unavailable' });
+        } else {
+          resolve({ ok: true });
+        }
+      });
+    } catch (error) {
+      resolve({ ok: false, error: String(error) });
+    }
+  });
 }
 
 async function closeReaderWindow(sender, tabIdHint) {

@@ -24,6 +24,7 @@ const els = {
   timeCurrent: document.getElementById('timeCurrent'),
   timeTotal: document.getElementById('timeTotal'),
   rateSelect: document.getElementById('rateSelect'),
+  reloadYouTube: document.getElementById('reloadYouTube'),
   followAudio: document.getElementById('followAudio'),
   wordPopover: document.getElementById('wordPopover'),
   popWord: document.getElementById('popWord'),
@@ -47,6 +48,10 @@ const state = {
   base: null,
   connected: false,
   connectionError: '',
+  reloading: false,
+  reloadUntil: 0,
+  reloadTimer: 0,
+  stateGeneration: 0,
   lineEls: [],
   wordEls: [],
   linePlayEls: [],
@@ -365,8 +370,9 @@ function describeError(code) {
     case 'not-watch':
       return 'Abre um vídeo do YouTube para usar o modo leitura.';
     case 'tab-unavailable':
+      return 'A aba do YouTube foi fechada. Reabre o vídeo no YouTube e volta a abrir o leitor.';
     case 'timeout':
-      return 'A aba do YouTube foi fechada ou deixou de responder. O texto que já foi carregado continua disponível.';
+      return 'A aba do YouTube não respondeu. Usa o botão Recarregar YouTube para tentar novamente.';
     case 'play-blocked':
       return 'O Chrome bloqueou a reprodução vinda desta janela. Carrega no play da aba do YouTube.';
     case 'sem-video':
@@ -946,6 +952,8 @@ function applyPlayback(data) {
   state.connected = true;
   state.connectionError = '';
 
+  if (state.reloading) finishReload();
+
   const playing = !data.paused && !data.ad && !data.ended;
   state.base = {
     time: Math.max(0, Number(data.currentTime) || 0),
@@ -1007,6 +1015,8 @@ function applyFull(data, force = false) {
 }
 
 function applyFailure(result) {
+  if (state.reloading && performance.now() < state.reloadUntil) return;
+
   const code = (result && result.error) || 'tab-unavailable';
   state.connected = false;
   state.connectionError = describeError(code);
@@ -1042,6 +1052,7 @@ function flushPendingFull() {
 async function requestFull(force = false) {
   if (state.fullLoading) return;
   state.fullLoading = true;
+  const generation = state.stateGeneration;
 
   const result = await sendBackground(
     'legrendas:reader-state',
@@ -1049,6 +1060,7 @@ async function requestFull(force = false) {
     7000
   );
 
+  if (generation !== state.stateGeneration) return;
   state.fullLoading = false;
 
   if (!result || result.ok === false) {
@@ -1073,11 +1085,14 @@ async function poll() {
   }
 
   state.pollBusy = true;
+  const generation = state.stateGeneration;
   const result = await sendBackground(
     'legrendas:reader-state',
     { tabId: state.tabId, full: false },
     5000
   );
+
+  if (generation !== state.stateGeneration) return;
   state.pollBusy = false;
 
   if (!result || result.ok === false) {
@@ -1114,11 +1129,16 @@ function startRenderLoop() {
 }
 
 async function runCommand(action, value, options = {}) {
+  const generation = state.stateGeneration;
   const result = await sendBackground(
     'legrendas:reader-command',
     { tabId: state.tabId, action, value },
     6000
   );
+
+  if (generation !== state.stateGeneration) {
+    return result || { ok: false, error: 'stale' };
+  }
 
   if (!result || result.ok === false) {
     if (!options.silent) {
@@ -1699,6 +1719,70 @@ function onDocumentClick(event) {
   closePopover();
 }
 
+function finishReload(error = '') {
+  state.reloading = false;
+  state.reloadUntil = 0;
+  clearTimeout(state.reloadTimer);
+  state.reloadTimer = 0;
+
+  if (els.reloadYouTube) {
+    els.reloadYouTube.disabled = false;
+    els.reloadYouTube.classList.remove('is-reloading');
+    els.reloadYouTube.removeAttribute('aria-busy');
+  }
+
+  if (error) {
+    const text = describeError(error);
+    setStatus(text, 'error');
+    showToast(text);
+  }
+}
+
+async function reloadYouTubePage() {
+  if (state.reloading) return;
+
+  if (!Number.isInteger(state.tabId) || state.tabId <= 0) {
+    showToast(describeError('sem-video'));
+    return;
+  }
+
+  state.pendingFull = null;
+  if (state.popover.open) closePopover({ resume: false });
+  state.lookupSession = null;
+  state.reloading = true;
+  state.reloadUntil = performance.now() + 15000;
+  state.stateGeneration += 1;
+  state.pollBusy = false;
+  state.fullLoading = false;
+  clearTimeout(state.pollTimer);
+
+  if (els.reloadYouTube) {
+    els.reloadYouTube.disabled = true;
+    els.reloadYouTube.classList.add('is-reloading');
+    els.reloadYouTube.setAttribute('aria-busy', 'true');
+  }
+
+  setStatus('A recarregar a página do YouTube…', 'ok');
+
+  const result = await sendBackground(
+    'legrendas:reader-reload',
+    { tabId: state.tabId },
+    8000
+  );
+
+  if (!result || result.ok === false) {
+    finishReload((result && result.error) || 'timeout');
+    schedulePoll(400);
+    return;
+  }
+
+  clearTimeout(state.reloadTimer);
+  state.reloadTimer = setTimeout(() => {
+    if (state.reloading) finishReload('timeout');
+  }, 15000);
+  schedulePoll(400);
+}
+
 async function retryReader() {
   els.emptyState.hidden = false;
   setStatus('A tentar novamente…', 'ok');
@@ -1851,6 +1935,8 @@ function bindEvents() {
     runCommand('rate', Number(els.rateSelect.value) || 1);
   });
 
+  els.reloadYouTube.addEventListener('click', reloadYouTubePage);
+
   els.followAudio.addEventListener('click', () => {
     state.follow = !state.follow;
     state.settings.followAudio = state.follow;
@@ -1884,6 +1970,7 @@ function bindEvents() {
   window.addEventListener('beforeunload', () => {
     state.destroyed = true;
     clearTimeout(state.pollTimer);
+    clearTimeout(state.reloadTimer);
     cancelAnimationFrame(state.rafId);
     cancelHoverTimers();
   });

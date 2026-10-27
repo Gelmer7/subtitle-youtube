@@ -1,102 +1,13 @@
-/* Page-level rules. The dock itself is styled inside its shadow root. */
-
+/* CC nativo escondido enquanto a extensão está ativa. */
 html.legrendas-active .ytp-caption-window-container,
 html.legrendas-active .caption-window {
   opacity: 0 !important;
   pointer-events: none !important;
 }
 
-#legrendas-host {
-  all: initial;
-  display: block;
-  flex: none;
-  width: 100%;
-  margin: 0 auto 12px;
-}
-
-#legrendas-host.legrendas-fs-host {
-  position: absolute !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100% !important;
-  height: var(--legrendas-fs-h, 96px);
-  margin: 0 !important;
-  z-index: 60 !important;
-}
-
-/* Fullscreen: the video is reduced by the height of the subtitle strip, so the
-   strip sits in the black area below the picture instead of covering it. */
-#movie_player.legrendas-fs .html5-video-container {
-  height: calc(100% - var(--legrendas-fs-h, 96px)) !important;
-  top: 0 !important;
-}
-
-#movie_player.legrendas-fs video {
-  height: 100% !important;
-  top: 0 !important;
-  object-fit: contain !important;
-}
-
-#movie_player.legrendas-fs .ytp-chrome-bottom {
-  bottom: var(--legrendas-fs-h, 96px) !important;
-}
-
-#movie_player.legrendas-fs .ytp-gradient-bottom {
-  height: calc(var(--legrendas-fs-h, 96px) + 100px) !important;
-}
-
-/* Modo leitura: o player continua a tocar, mas a imagem fica fora de vista. */
+/* Modo leitura: o áudio continua, mas a imagem do player fica oculta. */
 html.legrendas-reader-audio #movie_player .html5-video-container,
 html.legrendas-reader-audio #movie_player .ytp-caption-window-container,
 html.legrendas-reader-audio #movie_player .ytp-preview {
   visibility: hidden !important;
-}
-
-#legrendas-reader-overlay {
-  position: absolute !important;
-  inset: 0 !important;
-  z-index: 70 !important;
-  display: flex !important;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 24px;
-  background: #000;
-  color: #fff;
-  text-align: center;
-  font-family: Roboto, "YouTube Sans", Arial, sans-serif;
-}
-
-#legrendas-reader-overlay[hidden] {
-  display: none !important;
-}
-
-#legrendas-reader-overlay strong {
-  font-size: 20px;
-  font-weight: 600;
-}
-
-#legrendas-reader-overlay span {
-  max-width: 460px;
-  color: #c9c9c9;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-#legrendas-reader-overlay button {
-  margin-top: 4px;
-  padding: 8px 14px;
-  border: 1px solid #444;
-  border-radius: 7px;
-  background: #1c1c1c;
-  color: #fff;
-  font: 500 12px/1.2 Roboto, "YouTube Sans", Arial, sans-serif;
-  cursor: pointer;
-}
-
-#legrendas-reader-overlay button:hover {
-  border-color: #777;
-  background: #262626;
 }
