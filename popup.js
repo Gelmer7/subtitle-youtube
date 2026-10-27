@@ -39,7 +39,9 @@ function getActiveTab() {
 function isWatchUrl(url) {
   return (
     typeof url === 'string' &&
-    /^https:\/\/www\.youtube\.com\/(watch|live)([/?#]|$)/.test(url)
+    /^https:\/\/(?:www\.|m\.)youtube\.com\/(?:watch|live)(?:[/?#]|$)/.test(
+      url
+    )
   );
 }
 
@@ -72,7 +74,7 @@ async function refreshReaderAvailability() {
 
   readerTabId = tab.id;
   readerButton.disabled = false;
-  setReaderStatus('Abre uma janela com a transcrição; o vídeo continua no YouTube.');
+  setReaderStatus('Abre o leitor com a transcrição; o vídeo continua no YouTube.');
 }
 
 function openReaderWindow() {
@@ -80,7 +82,7 @@ function openReaderWindow() {
 
   readerBusy = true;
   readerButton.disabled = true;
-  setReaderStatus('A abrir a janela do leitor…');
+  setReaderStatus('A abrir o leitor…');
 
   try {
     chrome.runtime.sendMessage(
@@ -90,7 +92,7 @@ function openReaderWindow() {
 
         if (chrome.runtime.lastError) {
           setReaderStatus(
-            chrome.runtime.lastError.message || 'Não foi possível abrir a janela.',
+            chrome.runtime.lastError.message || 'Não foi possível abrir o leitor.',
             true
           );
           readerButton.disabled = false;
@@ -99,17 +101,19 @@ function openReaderWindow() {
 
         if (!response || !response.ok) {
           setReaderStatus(
-            (response && response.error) || 'Não foi possível abrir a janela.',
+            (response && response.error) || 'Não foi possível abrir o leitor.',
             true
           );
           readerButton.disabled = false;
           return;
         }
 
+        const surface =
+          response.surface === 'tab' ? 'numa aba' : 'numa janela';
         setReaderStatus(
           response.existing
-            ? 'A janela do leitor já estava aberta.'
-            : 'Janela aberta. Podes minimizar esta aba; o áudio continua.'
+            ? `O leitor já estava aberto ${surface}.`
+            : `Leitor aberto ${surface}. O vídeo continua no YouTube.`
         );
         setTimeout(() => window.close(), 550);
       }

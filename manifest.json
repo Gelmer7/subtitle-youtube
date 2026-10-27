@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "SubIngles",
-  "version": "0.3.1",
-  "description": "Leitor de transcrições do YouTube com tradução de palavras e linhas; o vídeo continua visível.",
+  "version": "0.4.0",
+  "description": "Leitor de transcrições do YouTube no desktop e mobile, com tradução de palavras e linhas; o vídeo continua visível.",
   "minimum_chrome_version": "111",
   "permissions": ["storage"],
   "host_permissions": [
     "https://www.youtube.com/*",
+    "https://m.youtube.com/*",
     "https://translate.googleapis.com/*"
   ],
   "background": {
@@ -14,14 +15,20 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*"
+      ],
       "js": ["inject.js"],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
-      "matches": ["https://www.youtube.com/*"],
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://m.youtube.com/*"
+      ],
       "js": ["content.js"],
       "css": ["content.css"],
       "run_at": "document_idle",

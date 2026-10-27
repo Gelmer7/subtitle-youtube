@@ -3,6 +3,10 @@
 
   const CHANNEL = 'legrendas';
 
+  function isMobileSite() {
+    return location.hostname === 'm.youtube.com';
+  }
+
   const state = {
     settings: { enabled: true },
     videoId: null,
@@ -173,6 +177,10 @@
   }
 
   function setActiveClass(on) {
+    document.documentElement.classList.toggle(
+      'legrendas-mobile',
+      isMobileSite()
+    );
     document.documentElement.classList.toggle(
       'legrendas-active',
       !!on && state.settings.enabled
@@ -715,14 +723,33 @@
     });
   }
 
+  function setPlayerCaptions(player, track) {
+    if (!player || typeof player.setOption !== 'function') return false;
+    try {
+      player.setOption('captions', 'track', track);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function ensureCC() {
-    const button = document.querySelector('.ytp-subtitles-button');
-    if (!button) return false;
-    if (button.getAttribute('aria-pressed') === 'false') {
-      button.click();
+    const player = getPlayer();
+
+    if (
+      isMobileSite() &&
+      setPlayerCaptions(player, { languageCode: 'en' })
+    ) {
       return true;
     }
-    return false;
+
+    const button = document.querySelector('.ytp-subtitles-button');
+    if (button) {
+      if (button.getAttribute('aria-pressed') === 'false') button.click();
+      return true;
+    }
+
+    return setPlayerCaptions(player, { languageCode: 'en' });
   }
 
   function hasUsableCapture() {
@@ -741,18 +768,37 @@
   }
 
   function requestCaptions() {
-    const button = document.querySelector('.ytp-subtitles-button');
-    if (!button) return false;
-    const isOn = button.getAttribute('aria-pressed') === 'true';
-    if (isOn) {
-      button.click();
+    const player = getPlayer();
+
+    if (isMobileSite() && setPlayerCaptions(player, {})) {
       setTimeout(() => {
-        if (button.getAttribute('aria-pressed') === 'false') button.click();
-      }, 220);
-    } else {
-      button.click();
+        setPlayerCaptions(getPlayer(), { languageCode: 'en' });
+      }, 250);
+      return true;
     }
-    return true;
+
+    const button = document.querySelector('.ytp-subtitles-button');
+    if (button) {
+      const isOn = button.getAttribute('aria-pressed') === 'true';
+      if (isOn) {
+        button.click();
+        setTimeout(() => {
+          if (button.getAttribute('aria-pressed') === 'false') button.click();
+        }, 220);
+      } else {
+        button.click();
+      }
+      return true;
+    }
+
+    if (setPlayerCaptions(player, {})) {
+      setTimeout(() => {
+        setPlayerCaptions(getPlayer(), { languageCode: 'en' });
+      }, 250);
+      return true;
+    }
+
+    return false;
   }
 
   function resetForVideo(videoId) {

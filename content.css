@@ -1,6 +1,8 @@
-/* CC nativo escondido enquanto a extensão está ativa. */
-html.legrendas-active .ytp-caption-window-container,
-html.legrendas-active .caption-window {
+/* No desktop o leitor fica visível ao lado do vídeo, por isso o CC nativo
+   é escondido. No mobile o leitor abre numa aba separada, por isso o CC
+   nativo fica visível para o vídeo continuar legendado. */
+html.legrendas-active:not(.legrendas-mobile) .ytp-caption-window-container,
+html.legrendas-active:not(.legrendas-mobile) .caption-window {
   opacity: 0 !important;
   pointer-events: none !important;
 }
