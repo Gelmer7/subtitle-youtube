@@ -1,13 +1,11 @@
 'use strict';
 
 const DEFAULTS = {
-  enabled: true,
   targetLang: 'pt-BR',
   fontSize: 20,
 };
 
 const $ = (id) => document.getElementById(id);
-const enabled = $('enabled');
 const targetLang = $('targetLang');
 const fontSize = $('fontSize');
 const fontSizeOut = $('fontSizeOut');
@@ -50,12 +48,6 @@ async function refreshReaderAvailability() {
   if (!readerButton) return;
 
   readerTabId = null;
-
-  if (!enabled.checked) {
-    readerButton.disabled = true;
-    setReaderStatus('Ativa a extensão primeiro.');
-    return;
-  }
 
   const tab = await getActiveTab();
   if (!tab || !tab.id) {
@@ -127,7 +119,7 @@ function openReaderWindow() {
 
 function maybeAutoOpenReader() {
   if (autoOpenDone || readerBusy) return;
-  if (!enabled.checked || !readerTabId) return;
+  if (!readerTabId) return;
 
   autoOpenDone = true;
   openReaderWindow();
@@ -140,7 +132,6 @@ function renderFontSize() {
 
 function snapshot() {
   return {
-    enabled: enabled.checked,
     targetLang: targetLang.value,
     fontSize: Number(fontSize.value),
   };
@@ -163,7 +154,6 @@ async function load() {
     // Use defaults.
   }
 
-  enabled.checked = !!settings.enabled;
   targetLang.value = settings.targetLang === 'es' ? 'es' : 'pt-BR';
   fontSize.value = String(
     Math.min(28, Math.max(16, Number(settings.fontSize) || 20))
@@ -171,11 +161,6 @@ async function load() {
   renderFontSize();
 }
 
-enabled.addEventListener('change', () => {
-  save();
-  autoOpenDone = false;
-  refreshReaderAvailability().then(maybeAutoOpenReader);
-});
 targetLang.addEventListener('change', save);
 fontSize.addEventListener('input', () => {
   renderFontSize();

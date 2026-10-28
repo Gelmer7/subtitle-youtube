@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SubIngles",
-  "version": "0.5.0",
+  "version": "0.6.2",
   "description": "Leitor de transcrições do YouTube no desktop e mobile, com tradução, idioma e tamanho do texto.",
   "minimum_chrome_version": "111",
   "permissions": ["storage"],

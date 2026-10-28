@@ -152,8 +152,19 @@
     try {
       const player = document.getElementById('movie_player');
       const response = player && player.getPlayerResponse ? player.getPlayerResponse() : null;
+      const videoDetails = response && response.videoDetails;
+      let videoData = null;
+      try {
+        videoData =
+          player && typeof player.getVideoData === 'function'
+            ? player.getVideoData()
+            : null;
+      } catch {
+        // getVideoData is optional.
+      }
       const videoId =
-        (response && response.videoDetails && response.videoDetails.videoId) ||
+        (videoDetails && videoDetails.videoId) ||
+        (videoData && (videoData.video_id || videoData.videoId)) ||
         currentVideoId();
 
       if (!videoId) return;
@@ -189,7 +200,14 @@
           }))
         : [];
 
-      post('TRACKS', { tracks: state.tracks });
+      post('TRACKS', {
+        tracks: state.tracks,
+        title: (videoDetails && videoDetails.title) || (videoData && videoData.title) || '',
+        channel:
+          (videoDetails && videoDetails.author) ||
+          (videoData && videoData.author) ||
+          '',
+      });
     } catch {
       // The player may not be ready yet.
     }

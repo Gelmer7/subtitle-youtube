@@ -10,6 +10,8 @@
   const state = {
     settings: { enabled: true },
     videoId: null,
+    videoTitle: '',
+    videoChannel: '',
     tracks: [],
     captured: [],
     capturedBodies: new Map(),
@@ -222,19 +224,39 @@
     }
   }
 
-  function loadSettings() {
-    return chrome.storage.sync
-      .get({ enabled: true })
-      .then((stored) => {
-        state.settings.enabled = stored.enabled !== false;
-      })
-      .catch(() => {
-        state.settings.enabled = true;
-      });
+  function getPlayerVideoDetails() {
+    const player = getPlayer();
+    if (!player) return null;
+
+    try {
+      if (typeof player.getPlayerResponse === 'function') {
+        const response = player.getPlayerResponse();
+        if (response && response.videoDetails) return response.videoDetails;
+      }
+    } catch {
+      // Fall through to getVideoData.
+    }
+
+    try {
+      if (typeof player.getVideoData === 'function') {
+        const data = player.getVideoData();
+        if (data) return { title: data.title, author: data.author };
+      }
+    } catch {
+      // No player details available.
+    }
+
+    return null;
   }
 
   function getVideoTitle() {
+    const details = getPlayerVideoDetails();
+    const documentTitle = cleanText(
+      document.title.replace(/\s*-\s*YouTube\s*$/i, '')
+    );
     const title =
+      cleanText(state.videoTitle) ||
+      cleanText(details && details.title) ||
       cleanText(
         (document.querySelector('h1.ytd-watch-metadata yt-formatted-string') || {})
           .textContent
@@ -245,17 +267,40 @@
       cleanText(
         (document.querySelector('#above-the-fold #title') || {}).textContent
       ) ||
-      cleanText(document.title.replace(/\s*-\s*YouTube\s*$/i, ''));
+      cleanText((document.querySelector('meta[name="title"]') || {}).content) ||
+      cleanText(
+        (document.querySelector('meta[property="og:title"]') || {}).content
+      ) ||
+      (documentTitle && !/^YouTube$/i.test(documentTitle)
+        ? documentTitle
+        : '');
 
     return title || 'Vídeo do YouTube';
   }
 
   function getChannelName() {
-    return cleanText(
-      (document.querySelector('#owner #channel-name a') || {}).textContent ||
-      (document.querySelector('ytd-channel-name a') || {}).textContent ||
-      ''
-    );
+    const details = getPlayerVideoDetails();
+    const channel =
+      cleanText(state.videoChannel) ||
+      cleanText(details && details.author) ||
+      cleanText(
+        (document.querySelector('#owner #channel-name a') || {}).textContent
+      ) ||
+      cleanText(
+        (document.querySelector('ytd-channel-name a') || {}).textContent
+      ) ||
+      cleanText(
+        (document.querySelector('.slim-owner-channel-name') || {}).textContent
+      ) ||
+      cleanText(
+        (document.querySelector('ytm-slim-owner-renderer #channel-name a') || {})
+          .textContent
+      ) ||
+      cleanText(
+        (document.querySelector('#channel-name a') || {}).textContent
+      );
+
+    return channel;
   }
 
   function parseJson3(data) {
@@ -803,6 +848,8 @@
 
   function resetForVideo(videoId) {
     state.videoId = videoId;
+    state.videoTitle = '';
+    state.videoChannel = '';
     state.ready = false;
     state.loading = false;
     state.originalCues = [];
@@ -919,28 +966,6 @@
     state.navTimer = setTimeout(() => initVideo(0), 350);
   }
 
-  function applySettings() {
-    if (!state.settings.enabled) {
-      deactivatePage();
-      return;
-    }
-
-    cleanupLegacyUi();
-    if (!isWatchPage()) {
-      deactivatePage();
-      return;
-    }
-
-    const videoId = getVideoId();
-    if (videoId !== state.videoId) {
-      resetForVideo(videoId);
-      sendToPage('RESET');
-    }
-
-    setActiveClass(true);
-    if (!state.ready && !state.loading) initVideo(0);
-  }
-
   window.addEventListener('message', (event) => {
     const data = event.data;
     if (!data || data.source !== CHANNEL) return;
@@ -980,6 +1005,12 @@
       }
     } else if (data.type === 'TRACKS' && Array.isArray(data.tracks)) {
       state.tracks = data.tracks;
+      if (typeof data.title === 'string' && data.title.trim()) {
+        state.videoTitle = cleanText(data.title);
+      }
+      if (typeof data.channel === 'string' && data.channel.trim()) {
+        state.videoChannel = cleanText(data.channel);
+      }
       debug({ trackMessage: data.tracks.length });
       if (
         state.settings.enabled &&
@@ -1076,12 +1107,6 @@
     return undefined;
   });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes.enabled) return;
-    state.settings.enabled = changes.enabled.newValue !== false;
-    applySettings();
-  });
-
   window.addEventListener('yt-navigate-finish', () => {
     state.lastHref = location.href;
     onNavigate();
@@ -1122,13 +1147,8 @@
     wasAd = ad;
   }, 500);
 
-  loadSettings().then(() => {
-    cleanupLegacyUi();
-    state.lastHref = location.href;
-    if (state.settings.enabled) {
-      onNavigate();
-    } else {
-      deactivatePage();
-    }
-  });
+  state.settings.enabled = true;
+  cleanupLegacyUi();
+  state.lastHref = location.href;
+  onNavigate();
 })();

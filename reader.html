@@ -40,16 +40,45 @@
             </button>
           </div>
 
-          <div class="control-group navigation" role="group" aria-label="Velocidade de reprodução">
-            <label class="select-wrap">
-              <span class="sr-only">Velocidade</span>
-              <select id="rateSelect" aria-label="Velocidade de reprodução">
-                <option value="0.75">0,75×</option>
-                <option value="1" selected>1×</option>
-                <option value="1.25">1,25×</option>
-                <option value="1.5">1,5×</option>
-              </select>
-            </label>
+          <div class="control-group navigation rate" role="group" aria-label="Velocidade de reprodução">
+            <button
+              id="rateButton"
+              class="tool-button rate-button"
+              type="button"
+              aria-label="Velocidade de reprodução"
+              aria-expanded="false"
+              aria-controls="ratePanel"
+              aria-haspopup="dialog"
+              title="Velocidade de reprodução"
+            >
+              <span id="rateValue" class="rate-value">1×</span>
+            </button>
+            <div
+              id="ratePanel"
+              class="rate-panel"
+              role="dialog"
+              aria-label="Velocidade de reprodução"
+              hidden
+            >
+              <div class="rate-panel-head">
+                <span>Velocidade</span>
+                <output id="rateOut" for="rateRange">1,00×</output>
+              </div>
+              <input
+                id="rateRange"
+                class="rate-range"
+                type="range"
+                min="0.7"
+                max="1.5"
+                step="0.05"
+                value="1"
+                aria-label="Velocidade de reprodução"
+              />
+              <div class="rate-scale" aria-hidden="true">
+                <span>0,70×</span>
+                <span>1,50×</span>
+              </div>
+            </div>
           </div>
 
           <div class="control-group language" role="group" aria-label="Idioma da tradução">
@@ -113,22 +142,6 @@
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
-              </svg>
-            </button>
-          </div>
-
-          <div class="control-group power" role="group" aria-label="Estado da extensão">
-            <button
-              id="powerToggle"
-              class="tool-button"
-              type="button"
-              aria-pressed="true"
-              aria-label="Desativar extensão"
-              title="Desativar extensão"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M12 3v9" />
-                <path d="M6.6 6.6a8 8 0 1 0 10.8 0" />
               </svg>
             </button>
           </div>

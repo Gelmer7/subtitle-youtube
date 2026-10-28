@@ -1,7 +1,6 @@
 'use strict';
 
 const SETTINGS_DEFAULTS = {
-  enabled: true,
   targetLang: 'pt-BR',
   showTranslation: false,
   fontSize: 20,
@@ -23,14 +22,17 @@ const els = {
   timeCurrent: document.getElementById('timeCurrent'),
   timeTotal: document.getElementById('timeTotal'),
   seekBack: document.getElementById('seekBack'),
-  rateSelect: document.getElementById('rateSelect'),
+  rateButton: document.getElementById('rateButton'),
+  ratePanel: document.getElementById('ratePanel'),
+  rateRange: document.getElementById('rateRange'),
+  rateOut: document.getElementById('rateOut'),
+  rateValue: document.getElementById('rateValue'),
   targetLangSelect: document.getElementById('targetLangSelect'),
   fontSizeButton: document.getElementById('fontSizeButton'),
   fontSizePanel: document.getElementById('fontSizePanel'),
   fontSizeRange: document.getElementById('fontSizeRange'),
   fontSizeOut: document.getElementById('fontSizeOut'),
   followAudio: document.getElementById('followAudio'),
-  powerToggle: document.getElementById('powerToggle'),
   wordPopover: document.getElementById('wordPopover'),
   popWord: document.getElementById('popWord'),
   popTranslation: document.getElementById('popTranslation'),
@@ -53,7 +55,6 @@ const state = {
   base: null,
   connected: false,
   connectionError: '',
-  disabled: false,
   stateGeneration: 0,
   lineEls: [],
   wordEls: [],
@@ -93,6 +94,8 @@ const state = {
   },
   toastTimer: 0,
   fontSaveTimer: 0,
+  rateEditing: false,
+  rateSendTimer: 0,
   destroyed: false,
   videoId: null,
 };
@@ -173,12 +176,13 @@ function setSync(values) {
 }
 
 function normalizeSettings() {
-  state.settings.enabled = state.settings.enabled !== false;
   state.settings.targetLang = state.settings.targetLang === 'es' ? 'es' : 'pt-BR';
   state.settings.showTranslation = false;
   state.settings.pauseOnLookup = true;
   state.settings.followAudio = state.settings.followAudio !== false;
-  state.settings.loopLine = state.settings.loopLine === true;
+  // The loop button is intentionally hidden for now. The loop engine is kept
+  // for a future reimplementation, but it must not activate invisibly.
+  state.settings.loopLine = false;
   state.settings.fontSize = Math.min(
     28,
     Math.max(16, Number(state.settings.fontSize) || 20)
@@ -232,18 +236,7 @@ function applySettingsToUi() {
 }
 
 function updatePreferenceButtons() {
-  const enabled = state.settings.enabled;
   els.followAudio.setAttribute('aria-pressed', String(state.follow));
-  els.powerToggle.setAttribute('aria-pressed', String(enabled));
-  els.powerToggle.setAttribute(
-    'aria-label',
-    enabled ? 'Desativar extensão' : 'Ativar extensão'
-  );
-  els.powerToggle.title = enabled ? 'Desativar extensão' : 'Ativar extensão';
-  els.powerToggle.classList.toggle('is-on', enabled);
-  els.seekBack.disabled = !enabled;
-  els.rateSelect.disabled = !enabled;
-  els.followAudio.disabled = !enabled;
   syncLineToolState();
 }
 
@@ -332,6 +325,33 @@ function formatTime(value) {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
+function clampRate(value) {
+  const rate = Math.round((Number(value) || 1) * 100) / 100;
+  return Math.min(1.5, Math.max(0.7, rate));
+}
+
+function formatRate(value) {
+  const rate = clampRate(value);
+  return `${rate
+    .toFixed(2)
+    .replace(/0+$/, '')
+    .replace(/\.$/, '')
+    .replace('.', ',')}×`;
+}
+
+function formatRateDetail(value) {
+  return `${clampRate(value).toFixed(2).replace('.', ',')}×`;
+}
+
+function applyRateUi(value, options = {}) {
+  const rate = clampRate(value);
+  if (els.rateRange && options.range !== false) {
+    els.rateRange.value = String(rate);
+  }
+  if (els.rateOut) els.rateOut.textContent = formatRateDetail(rate);
+  if (els.rateValue) els.rateValue.textContent = formatRate(rate);
+}
+
 function lineKey(line) {
   return `${line.start}|${line.id != null ? line.id : line.text}`;
 }
@@ -392,8 +412,6 @@ function isCurrentlyPlaying() {
 
 function describeError(code) {
   switch (code) {
-    case 'disabled':
-      return 'A extensão está desativada. Clica no botão de energia no controlbar para a ativar.';
     case 'not-watch':
       return 'Abre um vídeo do YouTube para usar o modo leitura.';
     case 'tab-unavailable':
@@ -433,8 +451,16 @@ function updateTimeDisplay(force = false) {
 }
 
 function updateDocumentTitle(data) {
-  const title = data.title || 'Vídeo do YouTube';
-  const next = `${title} — SubIngles`;
+  const title = (data && data.title) || 'Vídeo do YouTube';
+  const rawChannel = ((data && data.channel) || '').trim();
+  const channel = rawChannel && rawChannel !== title ? rawChannel : '';
+
+  const next = data && data.title
+    ? channel
+      ? `${title} — ${channel}`
+      : title
+    : 'SubIngles — Leitor de transcrições';
+
   if (document.title !== next) document.title = next;
 }
 
@@ -474,12 +500,9 @@ function updateStatus(data) {
 }
 
 function updateControls(data) {
-  if (data) {
-    const rate = Number(data.rate) || 1;
-    const option = Array.from(els.rateSelect.options).find(
-      (item) => Number(item.value) === rate
-    );
-    if (option) els.rateSelect.value = option.value;
+  if (data && !state.rateEditing) {
+    const focused = document.activeElement === els.rateRange;
+    applyRateUi(data.rate, { range: !focused });
   }
 
   syncLineToolState();
@@ -534,26 +557,6 @@ function updateEmptyState(data) {
 
   if (heading.textContent !== title) heading.textContent = title;
   if (els.emptyText.textContent !== text) els.emptyText.textContent = text;
-}
-
-function showDisabledState() {
-  setStatus(state.connectionError, 'error');
-  els.emptyState.hidden = false;
-  els.transcript.hidden = true;
-  els.retryButton.hidden = false;
-  els.retryButton.textContent = 'Ativar extensão';
-
-  const heading = els.emptyState.querySelector('h2');
-  if (heading) heading.textContent = 'Extensão desativada';
-
-  els.emptyText.textContent =
-    'A transcrição está em pausa. Clica no botão de energia no controlbar ou em Ativar extensão.';
-}
-
-function resetDisabledState() {
-  if (!state.disabled) return;
-  state.disabled = false;
-  els.retryButton.textContent = 'Tentar novamente';
 }
 
 function renderTranscript() {
@@ -624,19 +627,9 @@ function renderTranscript() {
       '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
       '<path d="M4 5h10M9 3v2c0 4.6-2.3 8-6 10M5.5 9.5c1.8 3.2 4.5 5.6 8.1 7.2M14 20l4.2-10L22 20M15.7 16.5h5.1" />' +
       '</svg>';
-    const loopButton = document.createElement('button');
-    loopButton.type = 'button';
-    loopButton.className = 'line-loop';
-    loopButton.dataset.lineIndex = String(lineIndex);
-    loopButton.setAttribute('aria-pressed', 'false');
-    loopButton.setAttribute('aria-label', 'Repetir esta linha');
-    loopButton.title = 'Repetir esta linha';
-    loopButton.innerHTML =
-      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
-      '<path d="M20.5 12a8.5 8.5 0 1 1-2.49-6.01" />' +
-      '<path d="M20.5 3.5V9H15" />' +
-      '</svg>';
 
+    // The line-loop button is intentionally hidden for now. Its engine,
+    // state and CSS remain available for a future reimplementation.
     const playButton = document.createElement('button');
     playButton.type = 'button';
     playButton.className = 'line-play';
@@ -654,14 +647,13 @@ function renderTranscript() {
       '<path d="M9.5 5.5v13M14.5 5.5v13" />' +
       '</svg>';
 
-    tools.append(playButton, loopButton, translateButton);
+    tools.append(playButton, translateButton);
 
     lineEl.append(body, tools);
     fragment.append(lineEl);
     state.lineEls[lineIndex] = lineEl;
     state.wordEls[lineIndex] = wordEls;
     state.linePlayEls[lineIndex] = playButton;
-    state.lineLoopEls[lineIndex] = loopButton;
   });
 
   els.transcript.replaceChildren(fragment);
@@ -989,7 +981,6 @@ function applyPlayback(data) {
   state.light = data;
   state.connected = true;
   state.connectionError = '';
-  resetDisabledState();
 
   const playing = !data.paused && !data.ad && !data.ended;
   state.base = {
@@ -1053,24 +1044,6 @@ function applyFull(data, force = false) {
 
 function applyFailure(result) {
   const code = (result && result.error) || 'tab-unavailable';
-
-  if (code === 'disabled') {
-    state.disabled = true;
-    state.connected = false;
-    state.connectionError = describeError('disabled');
-    state.pendingFull = null;
-
-    if (state.base) {
-      state.base.time = getEstimatedTime();
-      state.base.paused = true;
-      state.base.at = performance.now();
-    }
-
-    showDisabledState();
-    return;
-  }
-
-  resetDisabledState();
 
   state.connected = false;
   state.connectionError = describeError(code);
@@ -1771,6 +1744,13 @@ function onDocumentClick(event) {
     closeFontPanel();
   }
 
+  if (
+    !els.ratePanel.hidden &&
+    (!(event.target instanceof Element) || !event.target.closest('.rate'))
+  ) {
+    closeRatePanel();
+  }
+
   if (!state.popover.open) return;
   const target = event.target;
   if (!(target instanceof Element)) {
@@ -1785,6 +1765,7 @@ function onDocumentClick(event) {
 function setFontPanel(open) {
   els.fontSizePanel.hidden = !open;
   els.fontSizeButton.setAttribute('aria-expanded', String(open));
+  if (open) closeRatePanel();
 }
 
 function closeFontPanel() {
@@ -1793,6 +1774,63 @@ function closeFontPanel() {
 
 function toggleFontPanel() {
   setFontPanel(els.fontSizePanel.hidden);
+}
+
+function syncRateUiFromState() {
+  const rate =
+    state.light && state.light.rate != null
+      ? state.light.rate
+      : state.base && state.base.rate != null
+        ? state.base.rate
+        : 1;
+  applyRateUi(rate);
+}
+
+function setRatePanel(open) {
+  els.ratePanel.hidden = !open;
+  els.rateButton.setAttribute('aria-expanded', String(open));
+  if (open) {
+    closeFontPanel();
+    syncRateUiFromState();
+  } else {
+    state.rateEditing = false;
+  }
+}
+
+function closeRatePanel() {
+  setRatePanel(false);
+}
+
+function toggleRatePanel() {
+  setRatePanel(els.ratePanel.hidden);
+}
+
+function scheduleRateCommand(rate) {
+  clearTimeout(state.rateSendTimer);
+  state.rateSendTimer = setTimeout(() => {
+    state.rateSendTimer = 0;
+    runCommand('rate', rate, { silent: true });
+  }, 120);
+}
+
+function sendRate(rate) {
+  clearTimeout(state.rateSendTimer);
+  state.rateSendTimer = 0;
+  runCommand('rate', rate);
+}
+
+function onRateInput() {
+  state.rateEditing = true;
+  const rate = clampRate(els.rateRange.value);
+  applyRateUi(rate, { range: false });
+  scheduleRateCommand(rate);
+}
+
+function onRateChange() {
+  state.rateEditing = false;
+  const rate = clampRate(els.rateRange.value);
+  applyRateUi(rate);
+  sendRate(rate);
 }
 
 function onFontSizeInput() {
@@ -1824,32 +1862,7 @@ function setTargetLang(value) {
   requestFull(true);
 }
 
-function setExtensionEnabled(next) {
-  const value = !!next;
-  if (value === state.settings.enabled) return;
-
-  state.settings.enabled = value;
-  updatePreferenceButtons();
-  persist('enabled', value);
-
-  if (value) {
-    setStatus('A ativar a extensão…', 'ok');
-    setTimeout(() => {
-      if (state.destroyed) return;
-      requestFull(true);
-      schedulePoll(400);
-    }, 300);
-  } else {
-    applyFailure({ ok: false, error: 'disabled' });
-  }
-}
-
 async function retryReader() {
-  if (!state.settings.enabled) {
-    setExtensionEnabled(true);
-    return;
-  }
-
   els.emptyState.hidden = false;
   setStatus('A tentar novamente…', 'ok');
   const result = await runCommand('retry', undefined, { silent: true });
@@ -1867,6 +1880,11 @@ function togglePlayPause() {
 
 function onKeyDown(event) {
   if (event.key === 'Escape') {
+    if (!els.ratePanel.hidden) {
+      event.preventDefault();
+      closeRatePanel();
+      return;
+    }
     if (!els.fontSizePanel.hidden) {
       event.preventDefault();
       closeFontPanel();
@@ -1956,25 +1974,6 @@ function onStorageChanged(changes, area) {
   let changed = false;
   let targetChanged = false;
 
-  if (changes.enabled) {
-    const next = changes.enabled.newValue !== false;
-    if (next !== state.settings.enabled) {
-      state.settings.enabled = next;
-      changed = true;
-
-      if (next) {
-        setStatus('A ativar a extensão…', 'ok');
-        setTimeout(() => {
-          if (state.destroyed) return;
-          requestFull(true);
-          schedulePoll(400);
-        }, 300);
-      } else {
-        applyFailure({ ok: false, error: 'disabled' });
-      }
-    }
-  }
-
   if (changes.targetLang) {
     const next = changes.targetLang.newValue === 'es' ? 'es' : 'pt-BR';
     if (next !== state.settings.targetLang) {
@@ -2008,14 +2007,6 @@ function onStorageChanged(changes, area) {
     changed = true;
   }
 
-  if (changes.loopLine) {
-    const next = changes.loopLine.newValue === true;
-    if (next !== state.settings.loopLine) {
-      setLoopEnabled(next, false);
-    }
-    changed = true;
-  }
-
   if (changed) updatePreferenceButtons();
 
   if (targetChanged) {
@@ -2029,8 +2020,17 @@ function bindEvents() {
     seekBy(-5);
   });
 
-  els.rateSelect.addEventListener('change', () => {
-    runCommand('rate', Number(els.rateSelect.value) || 1);
+  els.rateButton.addEventListener('click', () => {
+    toggleRatePanel();
+  });
+
+  els.rateRange.addEventListener('pointerdown', () => {
+    state.rateEditing = true;
+  });
+  els.rateRange.addEventListener('input', onRateInput);
+  els.rateRange.addEventListener('change', onRateChange);
+  els.rateRange.addEventListener('blur', () => {
+    state.rateEditing = false;
   });
 
   els.targetLangSelect.addEventListener('change', () => {
@@ -2043,10 +2043,6 @@ function bindEvents() {
 
   els.fontSizeRange.addEventListener('input', onFontSizeInput);
   els.fontSizeRange.addEventListener('change', onFontSizeChange);
-
-  els.powerToggle.addEventListener('click', () => {
-    setExtensionEnabled(!state.settings.enabled);
-  });
 
   els.followAudio.addEventListener('click', () => {
     state.follow = !state.follow;

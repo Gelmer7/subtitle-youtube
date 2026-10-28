@@ -24,13 +24,14 @@ Em navegadores que não suportam `chrome.action.onClicked` (alguns Android com e
 - Destaca a linha e a palavra que estão a tocar.
 - Faz auto-scroll; se rolarem manualmente, o seguimento suspende e retoma na linha seguinte.
 - Cada linha tem um botão de play/pause. Clicar numa linha salta para o início desse trecho e reproduz.
-- O botão de loop aparece na linha ativa e repete essa linha até ser desligado ou até saltar.
 - O botão de tradução aparece em todas as linhas e abre/fecha a tradução completa dessa linha.
 - Passar o rato numa palavra mostra a tradução; clicar fixa o popover com contexto e **Repetir frase**.
 - O áudio pausa ao abrir uma tradução e retoma ao fechar, se estava a tocar.
-- Controlos: tempo atual/total, retroceder 5 s, velocidade, idioma da tradução (PT/ES), tamanho do texto (Aa), seguir áudio e energia.
+- O título da janela/aba mostra o título do vídeo e o nome do canal.
+- O ícone da extensão usa o símbolo de legendas azul.
+- Controlos: tempo atual/total, retroceder 5 s, velocidade (0,70×–1,50×), idioma da tradução (PT/ES), tamanho do texto (Aa) e seguir áudio.
 - O botão **Aa** abre uma barra para aumentar ou reduzir o texto sem sair do leitor.
-- O botão de energia desativa a extensão e volta a mostrar o CC nativo; o leitor fica aberto e pode ser reativado no mesmo sítio.
+- A extensão está sempre ativa; para a desligar, usa `chrome://extensions`.
 - Se a ligação ao YouTube falhar, usa **Tentar novamente** no estado vazio ou recarrega a página do YouTube.
 
 ### Atalhos
@@ -43,7 +44,7 @@ Em navegadores que não suportam `chrome.action.onClicked` (alguns Android com e
 
 ## Como funciona
 
-1. `inject.js` corre no mundo MAIN e captura os pedidos `timedtext` do player, incluindo o token `pot` e o corpo das respostas.
+1. `inject.js` corre no mundo MAIN e captura os pedidos `timedtext` do player, incluindo o token `pot` e o corpo das respostas; também envia o título e o canal do vídeo.
 2. `content.js` escolhe a faixa inglesa, descarrega as cues em `json3` e mantém o estado que o leitor consome. Já não cria a barra por baixo do vídeo.
 3. `background.js` recebe o clique no ícone e abre `reader.html` diretamente numa janela ou, quando o navegador não suporta janelas de extensão, numa aba; faz a ponte de mensagens com a aba do YouTube e serve o fallback de tradução.
 4. O leitor pede o estado ao content script, desenha a transcrição e envia comandos de play, pause, seek, velocidade e mute para o player.
@@ -62,6 +63,7 @@ Em navegadores que não suportam `chrome.action.onClicked` (alguns Android com e
 - O YouTube pode mudar o player e quebrar a captura.
 - A tradução do YouTube e a do Google são automáticas; a qualidade varia.
 - O destaque por palavra é exato quando o YouTube fornece tempos por palavra. Nas legendas manuais, os tempos são interpolados.
+- O controlo de loop foi retirado da interface; o motor de repetição ficou no código para uma implementação futura.
 
 ## Privacidade
 
